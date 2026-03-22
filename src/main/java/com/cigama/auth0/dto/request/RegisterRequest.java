@@ -56,7 +56,7 @@ public class RegisterRequest {
 
     @DateTimeFormat
     @Past
-    private LocalDateTime dateOfBirth;
+    private LocalDate dateOfBirth;
 
     ///  -- Context --
 
