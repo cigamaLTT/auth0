@@ -64,4 +64,4 @@ public class User {
     /// Should only contain at most 20 recent updates
     @Column(name = "update_log", columnDefinition = "TEXT")
     private String updateLog;
-}
+}
