@@ -14,18 +14,35 @@ import java.io.IOException;
 @Component
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
+    // --- Core Methods ---
+
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
-        String jwtExceptionMessage = (String) request.getAttribute("jwtException");
-        String errorMessage = (jwtExceptionMessage != null) ? jwtExceptionMessage : authException.getMessage();
+        String jwtExceptionType = (String) request.getAttribute("jwtExceptionType");
+        String jwtExceptionMessage = (String) request.getAttribute("jwtExceptionMessage");
 
-        String jsonResponse = String.format(
-                "{\"status\": %d, \"message\": \"Unauthorized: %s\", \"data\": null}",
+        String errorMessage = "Unauthorized";
+        if (jwtExceptionType != null && jwtExceptionMessage != null) {
+            errorMessage = jwtExceptionMessage;
+        } else if (authException != null && authException.getMessage() != null) {
+            errorMessage = authException.getMessage();
+        }
+
+        String jsonResponse = """
+                {
+                    "status": %d,
+                    "error": "Unauthorized",
+                    "message": "%s",
+                    "type": "%s",
+                    "data": null
+                }
+                """.formatted(
                 HttpStatus.UNAUTHORIZED.value(),
-                errorMessage
+                errorMessage,
+                jwtExceptionType != null ? jwtExceptionType : "AUTHENTICATION_FAILED"
         );
 
         response.getWriter().write(jsonResponse);
