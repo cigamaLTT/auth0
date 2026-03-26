@@ -1,9 +1,11 @@
 package com.cigama.auth0.security;
 
 import com.cigama.auth0.dto.userdetails.CustomUserDetails;
-import com.cigama.auth0.security.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.security.SignatureException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,8 +53,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
-            } catch (JwtException | IllegalArgumentException ex) {
-                request.setAttribute("jwtException", ex.getMessage());
+            } catch (ExpiredJwtException ex) {
+                request.setAttribute("jwtExceptionType", "EXPIRED");
+                request.setAttribute("jwtExceptionMessage", "Token has expired");
+            } catch (MalformedJwtException ex) {
+                request.setAttribute("jwtExceptionType", "MALFORMED");
+                request.setAttribute("jwtExceptionMessage", "Token format is invalid");
+            } catch (SignatureException ex) {
+                request.setAttribute("jwtExceptionType", "INVALID_SIGNATURE");
+                request.setAttribute("jwtExceptionMessage", "Invalid signature");
+            } catch (UnsupportedJwtException ex) {
+                request.setAttribute("jwtExceptionType", "UNSUPPORTED");
+                request.setAttribute("jwtExceptionMessage", "Unsupported token format");
+            } catch (IllegalArgumentException ex) {
+                request.setAttribute("jwtExceptionType", "ILLEGAL_ARGUMENT");
+                request.setAttribute("jwtExceptionMessage", "Token argument is invalid");
+            } catch (Exception ex) {
+                request.setAttribute("jwtExceptionType", "UNKNOWN");
+                request.setAttribute("jwtExceptionMessage", "An unknown error occurred while validating the token");
             }
         }
 
