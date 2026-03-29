@@ -24,7 +24,6 @@ public class ClientApp {
     @Column(name = "name", nullable = false, unique = true)
     private String clientName;
 
-    /// should be saved as bcrypt
     /// this token is used for third party member use our api for their auth
     @Column(name = "api_token", nullable = false, updatable = false, unique = true)
     private String clientToken;
