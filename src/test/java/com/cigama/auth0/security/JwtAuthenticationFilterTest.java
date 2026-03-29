@@ -23,6 +23,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -65,11 +66,18 @@ class JwtAuthenticationFilterTest {
     @Test
     void doFilterInternal_ValidToken_SetsSecurityContext() throws ServletException, IOException {
         String token = "valid.jwt.token";
+        String mockUserId = UUID.randomUUID().toString();
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
 
         Claims mockClaims = mock(Claims.class);
-        when(mockClaims.getSubject()).thenReturn("user@test.local");
-        when(mockClaims.get("role", String.class)).thenReturn("AUTHORIZED_USER");
+        when(mockClaims.getSubject()).thenReturn(mockUserId);
+        when(mockClaims.get("role", String.class)).thenReturn("ROLE_AUTHORIZED_USER");
+        
+        // Mocking for CustomUserDetails.build(claims) reflection logic
+        when(mockClaims.get("userId")).thenReturn(mockUserId);
+        when(mockClaims.get("username")).thenReturn("user@test.local");
+        when(mockClaims.get("role")).thenReturn("ROLE_AUTHORIZED_USER");
+        
         when(tokenProvider.extractAllClaims(token)).thenReturn(mockClaims);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
