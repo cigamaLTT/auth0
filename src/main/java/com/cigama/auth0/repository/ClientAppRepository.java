@@ -12,4 +12,6 @@ public interface ClientAppRepository extends JpaRepository<ClientApp, UUID> {
 
     boolean existsByClientName(String clientName);
 
+    Optional<ClientApp> findByClientToken(String clientToken);
+
 }

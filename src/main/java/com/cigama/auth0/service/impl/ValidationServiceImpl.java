@@ -1,4 +1,118 @@
 package com.cigama.auth0.service.impl;
 
-public class ValidationServiceImpl {
+import com.cigama.auth0.dto.request.LoginRequest;
+import com.cigama.auth0.dto.request.RegisterRequest;
+import com.cigama.auth0.entity.ClientApp;
+import com.cigama.auth0.entity.RefreshToken;
+import com.cigama.auth0.entity.User;
+import com.cigama.auth0.exception.CustomException;
+import com.cigama.auth0.repository.ClientAppRepository;
+import com.cigama.auth0.repository.RefreshTokenRepository;
+import com.cigama.auth0.repository.UserRepository;
+import com.cigama.auth0.service.ValidationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+
+@Service
+@RequiredArgsConstructor
+public class ValidationServiceImpl implements ValidationService {
+
+    // --- Variables ---
+
+    private final UserRepository userRepository;
+    private final ClientAppRepository clientAppRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    // --- Public Methods ---
+
+    /**
+     * Validates registration data and optional API Key.
+     */
+    @Override
+    public ClientApp validateRegistration(RegisterRequest request, String apiKey) {
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Passwords do not match");
+        }
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new CustomException(HttpStatus.CONFLICT, "Email is already in use");
+        }
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new CustomException(HttpStatus.CONFLICT, "Username is already in use");
+        }
+        return validateApiKey(apiKey);
+    }
+
+    /**
+     * Validates login credentials and fetches associated client apps.
+     */
+    @Override
+    public User validateLogin(LoginRequest request) {
+        User user = userRepository.findWithClientAppsByEmailOrUsername(request.getEmailOrUsername())
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+        }
+        return user;
+    }
+
+    /**
+     * Verifies API Key hash against stored client tokens.
+     */
+    @Override
+    public ClientApp validateApiKey(String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return null;
+        }
+        String hashedKey = hashValue(apiKey);
+        return clientAppRepository.findByClientToken(hashedKey)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid API Key"));
+    }
+
+    /**
+     * Validates Refresh Token:
+     * 1. Checks if token exists and is not revoked.
+     * 2. Checks expiration time.
+     */
+    @Override
+    public RefreshToken validateRefreshToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Refresh token is required");
+        }
+
+        String hashedToken = hashValue(token);
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hashedToken)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+
+        if (refreshToken.getIsRevoked()) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Refresh token has been revoked");
+        }
+
+        if (refreshToken.getExpiredAt().isBefore(LocalDateTime.now())) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Refresh token has expired");
+        }
+
+        return refreshToken;
+    }
+
+    // --- Private Helpers ---
+
+    private String hashValue(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().withLowerCase().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "SHA-256 algorithm not found");
+        }
+    }
 }

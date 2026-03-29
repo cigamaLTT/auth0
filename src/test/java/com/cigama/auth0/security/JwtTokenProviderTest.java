@@ -46,6 +46,7 @@ class JwtTokenProviderTest {
         User mockUser = new User();
         mockUser.setUserId(UUID.randomUUID());
         mockUser.setEmail(UUID.randomUUID().toString().substring(0, 8) + "@test.local");
+        mockUser.setUsername("user_" + UUID.randomUUID().toString().substring(0, 8));
         mockUser.setPassword("MockPassword123!");
         mockUser.setRole(role);
         mockUser.setIsAuthorized(true);
@@ -76,13 +77,10 @@ class JwtTokenProviderTest {
         for (Field field : CustomUserDetails.class.getDeclaredFields()) {
             if (field.isAnnotationPresent(JwtClaim.class)) {
                 field.setAccessible(true);
-                JwtClaim claimAnnotation = field.getAnnotation(JwtClaim.class);
-                String expectedKey = claimAnnotation.value().isEmpty() ? field.getName() : claimAnnotation.value();
-
                 Object expectedValue = field.get(userDetails);
 
-                assertTrue(claims.containsKey(expectedKey));
-                assertEquals(expectedValue.toString(), claims.get(expectedKey, String.class));
+                assertTrue(claims.containsKey(field.getName()));
+                assertEquals(expectedValue.toString(), claims.get(field.getName(), String.class));
             }
         }
     }

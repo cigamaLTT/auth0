@@ -6,9 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to whitelist fields that should be included as Claims in a JWT Token.
+ * Annotation to whitelist fields that can be populated via Reflection from RegisterRequest.
+ * Prevents mass-assignment vulnerabilities.
+ * Method: AuthServiceImpl.register()
  */
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface JwtClaim {
+public @interface RegisterField {
 }

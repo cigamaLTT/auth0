@@ -30,29 +30,18 @@ public class JwtTokenProvider {
     private long jwtExpiration;
 
     private SecretKey signingKey;
-    private final List<ClaimFieldInfo> claimFields = new ArrayList<>();
-
-    private static class ClaimFieldInfo {
-        final String claimKey;
-        final Field field;
-
-        ClaimFieldInfo(String claimKey, Field field) {
-            this.claimKey = claimKey;
-            this.field = field;
-        }
-    }
+    private final List<Field> jwtClaimFields = new ArrayList<>();
 
     @PostConstruct
     public void init() {
         byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
 
+        // Pre-cache fields marked with @JwtClaim for performance
         for (Field field : CustomUserDetails.class.getDeclaredFields()) {
             if (field.isAnnotationPresent(JwtClaim.class)) {
                 field.setAccessible(true);
-                JwtClaim claimAnnotation = field.getAnnotation(JwtClaim.class);
-                String claimKey = claimAnnotation.value().isEmpty() ? field.getName() : claimAnnotation.value();
-                claimFields.add(new ClaimFieldInfo(claimKey, field));
+                jwtClaimFields.add(field);
             }
         }
     }
@@ -65,11 +54,11 @@ public class JwtTokenProvider {
 
         Map<String, Object> claimsMap = new HashMap<>();
 
-        for (ClaimFieldInfo info : claimFields) {
+        for (Field field : jwtClaimFields) {
             try {
-                Object value = info.field.get(userDetails);
+                Object value = field.get(userDetails);
                 if (value != null) {
-                    claimsMap.put(info.claimKey, value.toString());
+                    claimsMap.put(field.getName(), value.toString());
                 }
             } catch (IllegalAccessException e) {
                 throw new RuntimeException("Error accessing field for JWT claim", e);
