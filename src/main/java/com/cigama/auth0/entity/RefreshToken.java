@@ -36,4 +36,8 @@ public class RefreshToken {
 
     @Column(name = "is_revoked", nullable = false)
     private Boolean isRevoked = false;
+
+    @org.hibernate.annotations.UpdateTimestamp
+    @Column(name = "updated_at")
+    private java.time.LocalDateTime updatedAt;
 }

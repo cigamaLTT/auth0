@@ -11,9 +11,12 @@ import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.service.ValidationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,6 +24,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ValidationServiceImpl implements ValidationService {
@@ -31,6 +35,9 @@ public class ValidationServiceImpl implements ValidationService {
     private final ClientAppRepository clientAppRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+
+    @Value("${jwt.refresh-grace-period}")
+    private int refreshGracePeriodSeconds;
 
     // --- Public Methods ---
 
@@ -79,11 +86,10 @@ public class ValidationServiceImpl implements ValidationService {
     }
 
     /**
-     * Validates Refresh Token:
-     * 1. Checks if token exists and is not revoked.
-     * 2. Checks expiration time.
+     * Validates Refresh Token and handles rotation grace period (15s).
      */
     @Override
+    @Transactional
     public RefreshToken validateRefreshToken(String token) {
         if (token == null || token.isBlank()) {
             throw new CustomException(HttpStatus.BAD_REQUEST, "Refresh token is required");
@@ -94,7 +100,16 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
 
         if (refreshToken.getIsRevoked()) {
-            throw new CustomException(HttpStatus.UNAUTHORIZED, "Refresh token has been revoked");
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime revokedAt = refreshToken.getUpdatedAt() != null ? 
+                    refreshToken.getUpdatedAt() : refreshToken.getCreatedAt();
+
+            if (revokedAt.plusSeconds(refreshGracePeriodSeconds).isBefore(now)) {
+                log.warn("Token theft detected for user: {}", refreshToken.getUserId());
+                refreshTokenRepository.deleteByUserId(refreshToken.getUserId());
+                throw new CustomException(HttpStatus.UNAUTHORIZED, "Security alert: Potential token theft detected. All sessions have been revoked.");
+            }
+            log.info("Concurrent refresh detected for user: {}", refreshToken.getUserId());
         }
 
         if (refreshToken.getExpiredAt().isBefore(LocalDateTime.now())) {
