@@ -67,7 +67,7 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .claims(claimsMap)
-                .subject(userDetails.getUsername())
+                .subject(userDetails.getUserId() != null ? userDetails.getUserId().toString() : null)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(signingKey)

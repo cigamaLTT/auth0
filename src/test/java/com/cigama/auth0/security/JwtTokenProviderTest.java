@@ -100,7 +100,7 @@ class JwtTokenProviderTest {
         assertNotNull(token);
         assertNull(claims.get("userId"));
         assertNull(claims.get("role"));
-        assertEquals("null-claim-user@test.local", claims.getSubject());
+        assertNull(claims.getSubject());
     }
 
     @Test

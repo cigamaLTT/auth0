@@ -122,19 +122,7 @@ public class CustomUserDetails implements UserDetails {
         return details;
     }
 
-    /**
-     * Reconstructs minimal details from username and role strings.
-     * Used by JwtAuthenticationFilter for stateless auth.
-     */
-    public static CustomUserDetails build(String email, String role) {
-        return CustomUserDetails.builder()
-                .username(email)
-                .password("")
-                .isEnabled(true)
-                .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())))
-                .role(role)
-                .build();
-    }
+
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
