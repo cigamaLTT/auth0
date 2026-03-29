@@ -15,6 +15,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "refresh_tokens")
 public class RefreshToken {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", nullable = false, updatable = false)

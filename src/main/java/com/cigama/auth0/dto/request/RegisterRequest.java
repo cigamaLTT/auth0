@@ -58,10 +58,12 @@ public class RegisterRequest {
     @Past
     private LocalDate dateOfBirth;
 
-    ///  -- Context --
+    ///  -- Client Data --
 
-    // The server should generate this automatically so user does not need to type it down
-    @NotBlank(message = "Client Name should not be blanked")
+    // This can be null
+
     private String clientName;
+
+    private String clientId;
 
 }

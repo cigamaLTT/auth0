@@ -29,7 +29,6 @@ public class LoginRequest {
     ///  -- Context --
 
     // The server should generate this automatically so user does not need to type it down
-    @NotBlank(message = "Client Name should not be blanked")
     private String clientName;
 
 }
