@@ -144,7 +144,10 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findById(oldToken.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found from valid refresh token"));
 
-        refreshTokenRepository.delete(oldToken);
+        if (!oldToken.getIsRevoked()) {
+            oldToken.setIsRevoked(true);
+            refreshTokenRepository.save(oldToken);
+        }
 
         return generateTokenResponse(user);
     }
