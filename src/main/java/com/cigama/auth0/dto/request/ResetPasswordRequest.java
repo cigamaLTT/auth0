@@ -1,8 +1,8 @@
 package com.cigama.auth0.dto.request;
 
+import com.cigama.auth0.validation.ConfigurableLength;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,7 +10,7 @@ import lombok.Setter;
 @Setter
 public class ResetPasswordRequest {
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"
@@ -18,7 +18,7 @@ public class ResetPasswordRequest {
     private String password;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"

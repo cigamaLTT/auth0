@@ -1,6 +1,7 @@
 package com.cigama.auth0.dto.request;
 
 
+import com.cigama.auth0.validation.ConfigurableLength;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,7 +23,7 @@ public class RegisterRequest {
     private String phoneNumber;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"
@@ -30,7 +31,7 @@ public class RegisterRequest {
     private String password;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"
@@ -47,7 +48,10 @@ public class RegisterRequest {
     private String lastName;
 
     @NotBlank(message = "Username is required")
-    @Size(min = 4, max = 30, message = "Username's length should be at least 4 characters and at most 30 characters")
+    @ConfigurableLength(
+            minKey = "app.policy.username-min-length",
+            maxKey = "app.policy.username-max-length"
+    )
     private String username;
 
 

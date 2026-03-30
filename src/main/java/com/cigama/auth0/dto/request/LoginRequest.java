@@ -1,6 +1,7 @@
 package com.cigama.auth0.dto.request;
 
 
+import com.cigama.auth0.validation.ConfigurableLength;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,7 +17,7 @@ public class LoginRequest {
     private String emailOrUsername;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"
