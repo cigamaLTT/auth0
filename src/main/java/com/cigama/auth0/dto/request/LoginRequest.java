@@ -4,10 +4,7 @@ package com.cigama.auth0.dto.request;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.format.annotation.DateTimeFormat;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -25,10 +22,5 @@ public class LoginRequest {
             message = "Password must contain at least 1 uppercase letter"
     )
     private String password;
-
-    ///  -- Context --
-
-    // The server should generate this automatically so user does not need to type it down
-    private String clientName;
 
 }
