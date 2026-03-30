@@ -24,6 +24,9 @@ public class RefreshToken {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
+    @Column(name = "client_id", nullable = true, updatable = false)
+    private UUID clientId;
+
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
 

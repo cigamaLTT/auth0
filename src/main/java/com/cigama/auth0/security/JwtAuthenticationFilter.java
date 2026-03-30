@@ -46,6 +46,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = tokenProvider.extractAllClaims(jwt);
                 JwtPayload payload = objectMapper.convertValue(claims, JwtPayload.class);
 
+                // Extract 'aud' (audience) standard claim and map it back to clientId
+                if (claims.getAudience() != null && !claims.getAudience().isEmpty()) {
+                    payload.setClientId(claims.getAudience().iterator().next());
+                }
+
                 if (StringUtils.hasText(payload.getUserId()) && StringUtils.hasText(payload.getRole())) {
                     UserDetails userDetails = userMapper.toCustomUserDetails(payload);
 

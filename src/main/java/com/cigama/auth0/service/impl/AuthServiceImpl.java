@@ -11,6 +11,7 @@ import com.cigama.auth0.entity.User;
 import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
+import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.AuthService;
 import com.cigama.auth0.service.ValidationService;
@@ -41,6 +42,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
+    private final ClientAppRepository clientAppRepository;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -89,7 +91,7 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        return generateTokenResponse(user);
+        return generateTokenResponse(user, clientApp);
     }
 
     /**
@@ -108,13 +110,19 @@ public class AuthServiceImpl implements AuthService {
             refreshTokenRepository.save(oldToken);
         }
 
-        return generateTokenResponse(user);
+        ClientApp clientApp = null;
+        if (oldToken.getClientId() != null) {
+            clientApp = clientAppRepository.findById(oldToken.getClientId()).orElse(null);
+        }
+
+        return generateTokenResponse(user, clientApp);
     }
 
     // --- Private Helpers ---
 
-    private TokenResponse generateTokenResponse(User user) {
-        JwtPayload jwtPayload = userMapper.toJwtPayload(user);
+    private TokenResponse generateTokenResponse(User user, ClientApp clientApp) {
+        String clientIdStr = clientApp != null ? clientApp.getClientId().toString() : null;
+        JwtPayload jwtPayload = userMapper.toJwtPayload(user, clientIdStr);
         String accessToken = jwtTokenProvider.generateAccessToken(jwtPayload);
 
         String refreshTokenRaw = generateSecureToken();
@@ -122,6 +130,7 @@ public class AuthServiceImpl implements AuthService {
 
         RefreshToken refreshTokenEntity = new RefreshToken();
         refreshTokenEntity.setUserId(user.getUserId());
+        refreshTokenEntity.setClientId(clientApp != null ? clientApp.getClientId() : null);
         refreshTokenEntity.setTokenHash(refreshTokenHash);
         refreshTokenEntity.setExpiredAt(LocalDateTime.now().plusSeconds(refreshExpiration / 1000));
         refreshTokenEntity.setIsRevoked(false);
