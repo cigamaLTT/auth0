@@ -22,6 +22,7 @@ public class CustomUserDetails implements UserDetails {
     private String password;
     private boolean enabled;
     private String role;
+    private String clientId;
 
     // --- UserDetails Interface ---
 

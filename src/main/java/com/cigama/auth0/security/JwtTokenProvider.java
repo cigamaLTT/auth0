@@ -1,6 +1,7 @@
 package com.cigama.auth0.security;
 
 import com.cigama.auth0.dto.JwtPayload;
+import io.jsonwebtoken.JwtBuilder;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
@@ -41,7 +42,8 @@ public class JwtTokenProvider {
     // --- Core Methods ---
 
     /**
-     * Serializes the JwtPayload to a claims map via ObjectMapper, then builds and signs the JWT.
+     * Serializes the JwtPayload to a claims map via ObjectMapper, then builds and
+     * signs the JWT.
      * The userId is also set as the JWT subject for standard compliance.
      */
     public String generateAccessToken(JwtPayload payload) {
@@ -49,14 +51,20 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + jwtExpiration);
 
         Map<String, Object> claimsMap = objectMapper.convertValue(payload, new TypeReference<>() {});
+        claimsMap.remove("clientId");
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .claims(claimsMap)
                 .subject(payload.getUserId())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(signingKey)
-                .compact();
+                .signWith(signingKey);
+
+        if (payload.getClientId() != null) {
+            builder.audience().add(payload.getClientId()).and();
+        }
+
+        return builder.compact();
     }
 
     public Claims extractAllClaims(String token) {
