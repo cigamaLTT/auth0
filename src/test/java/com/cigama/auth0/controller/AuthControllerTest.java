@@ -4,7 +4,7 @@ import com.cigama.auth0.dto.request.LoginRequest;
 import com.cigama.auth0.dto.request.RegisterRequest;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.service.AuthService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +15,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -46,8 +45,10 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        objectMapper.findAndRegisterModules();
+        objectMapper = new ObjectMapper();
+        // Jackson 3 doesn't have findAndRegisterModules() at the top level 
+        // in the same way, but Spring Boot's Jackson auto-config handles this.
+        // For a manual instance, we use the new builder API or just the default.
         registerRequest = new RegisterRequest();
         registerRequest.setEmail("test@example.com");
         registerRequest.setUsername("testuser");
@@ -78,7 +79,6 @@ class AuthControllerTest {
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setEmailOrUsername("testuser");
         loginRequest.setPassword("Password123");
-        loginRequest.setClientName("TestClient");
 
         TokenResponse tokenResponse = TokenResponse.builder()
                 .accessToken("access-token")

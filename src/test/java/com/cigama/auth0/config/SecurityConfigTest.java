@@ -43,6 +43,12 @@ class SecurityConfigTest {
     @MockitoBean
     private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
+    @MockitoBean
+    private tools.jackson.databind.ObjectMapper objectMapper;
+
+    @MockitoBean
+    private com.cigama.auth0.mapper.UserMapper userMapper;
+
     // --- Dummy Controller for Testing ---
 
     @RestController

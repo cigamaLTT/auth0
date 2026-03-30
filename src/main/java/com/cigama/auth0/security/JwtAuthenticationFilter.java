@@ -1,6 +1,8 @@
 package com.cigama.auth0.security;
 
-import com.cigama.auth0.dto.userdetails.CustomUserDetails;
+import com.cigama.auth0.dto.JwtPayload;
+import com.cigama.auth0.mapper.UserMapper;
+import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
@@ -28,6 +30,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // --- Variables ---
 
     private final JwtTokenProvider tokenProvider;
+    private final ObjectMapper objectMapper;
+    private final UserMapper userMapper;
 
     // --- Core Methods ---
 
@@ -40,12 +44,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(jwt)) {
             try {
                 Claims claims = tokenProvider.extractAllClaims(jwt);
+                JwtPayload payload = objectMapper.convertValue(claims, JwtPayload.class);
 
-                String subjectId = claims.getSubject();
-                String role = claims.get("role", String.class);
-
-                if (StringUtils.hasText(subjectId) && StringUtils.hasText(role)) {
-                    UserDetails userDetails = CustomUserDetails.build(claims);
+                if (StringUtils.hasText(payload.getUserId()) && StringUtils.hasText(payload.getRole())) {
+                    UserDetails userDetails = userMapper.toCustomUserDetails(payload);
 
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());

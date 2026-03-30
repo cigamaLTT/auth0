@@ -1,5 +1,9 @@
 package com.cigama.auth0.security;
 
+import com.cigama.auth0.dto.JwtPayload;
+import com.cigama.auth0.mapper.UserMapper;
+import com.cigama.auth0.dto.userdetails.CustomUserDetails;
+import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
@@ -38,6 +42,12 @@ class JwtAuthenticationFilterTest {
     private JwtTokenProvider tokenProvider;
 
     @Mock
+    private ObjectMapper objectMapper;
+
+    @Mock
+    private UserMapper userMapper;
+
+    @Mock
     private HttpServletRequest request;
 
     @Mock
@@ -54,6 +64,8 @@ class JwtAuthenticationFilterTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
+        objectMapper = new ObjectMapper();
+        jwtAuthenticationFilter = new JwtAuthenticationFilter(tokenProvider, objectMapper, userMapper);
     }
 
     @AfterEach
@@ -69,16 +81,25 @@ class JwtAuthenticationFilterTest {
         String mockUserId = UUID.randomUUID().toString();
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
 
-        Claims mockClaims = mock(Claims.class);
-        when(mockClaims.getSubject()).thenReturn(mockUserId);
-        when(mockClaims.get("role", String.class)).thenReturn("ROLE_AUTHORIZED_USER");
+
+        Claims claims = io.jsonwebtoken.Jwts.claims()
+                .add("userId", mockUserId)
+                .add("username", "user@test.local")
+                .add("role", "ROLE_AUTHORIZED_USER")
+                .build();
         
-        // Mocking for CustomUserDetails.build(claims) reflection logic
-        when(mockClaims.get("userId")).thenReturn(mockUserId);
-        when(mockClaims.get("username")).thenReturn("user@test.local");
-        when(mockClaims.get("role")).thenReturn("ROLE_AUTHORIZED_USER");
+        when(tokenProvider.extractAllClaims(token)).thenReturn(claims);
         
-        when(tokenProvider.extractAllClaims(token)).thenReturn(mockClaims);
+
+
+        CustomUserDetails userDetails = CustomUserDetails.builder()
+                .userId(mockUserId)
+                .username("user@test.local")
+                .role("ROLE_AUTHORIZED_USER")
+                .enabled(true)
+                .build();
+
+        when(userMapper.toCustomUserDetails(any(JwtPayload.class))).thenReturn(userDetails);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 
@@ -118,10 +139,9 @@ class JwtAuthenticationFilterTest {
         String token = "token.missing.claims";
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
 
-        Claims mockClaims = mock(Claims.class);
-        when(mockClaims.getSubject()).thenReturn(null);
-        when(mockClaims.get("role", String.class)).thenReturn(null);
-        when(tokenProvider.extractAllClaims(token)).thenReturn(mockClaims);
+
+        Claims claims = io.jsonwebtoken.Jwts.claims().build();
+        when(tokenProvider.extractAllClaims(token)).thenReturn(claims);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 

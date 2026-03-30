@@ -1,20 +1,15 @@
 package com.cigama.auth0.security;
 
-import com.cigama.auth0.dto.userdetails.CustomUserDetails;
-import com.cigama.auth0.entity.Role;
-import com.cigama.auth0.entity.User;
-import com.cigama.auth0.security.annotation.JwtClaim;
+import com.cigama.auth0.dto.JwtPayload;
+import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.lang.reflect.Field;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -34,7 +29,7 @@ class JwtTokenProviderTest {
 
     @BeforeEach
     void setUp() {
-        jwtTokenProvider = new JwtTokenProvider();
+        jwtTokenProvider = new JwtTokenProvider(new ObjectMapper());
         ReflectionTestUtils.setField(jwtTokenProvider, "jwtSecret", VALID_BASE64_SECRET);
         ReflectionTestUtils.setField(jwtTokenProvider, "jwtExpiration", VALID_EXPIRATION);
         jwtTokenProvider.init();
@@ -42,25 +37,24 @@ class JwtTokenProviderTest {
 
     // --- Helpers ---
 
-    private CustomUserDetails generateRandomUserDetails(Role role) {
-        User mockUser = new User();
-        mockUser.setUserId(UUID.randomUUID());
-        mockUser.setEmail(UUID.randomUUID().toString().substring(0, 8) + "@test.local");
-        mockUser.setUsername("user_" + UUID.randomUUID().toString().substring(0, 8));
-        mockUser.setPassword("MockPassword123!");
-        mockUser.setRole(role);
-        mockUser.setIsAuthorized(true);
-        return CustomUserDetails.build(mockUser);
+    private JwtPayload generateRandomPayload(String role) {
+        return JwtPayload.builder()
+                .userId(UUID.randomUUID().toString())
+                .username("user_" + UUID.randomUUID().toString().substring(0, 8))
+                .firstName("Test")
+                .lastName("User")
+                .role(role)
+                .build();
     }
+
 
     // --- Test Cases ---
 
-    @ParameterizedTest
-    @EnumSource(Role.class)
-    void generateAccessToken_SuccessForAllRoles(Role role) {
-        CustomUserDetails userDetails = generateRandomUserDetails(role);
+    @Test
+    void generateAccessToken_WithAdminRole_ProducesValidJwt() {
+        JwtPayload payload = generateRandomPayload("ROLE_ADMIN");
 
-        String token = jwtTokenProvider.generateAccessToken(userDetails);
+        String token = jwtTokenProvider.generateAccessToken(payload);
 
         assertNotNull(token);
         assertFalse(token.isBlank());
@@ -68,33 +62,49 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    void extractAllClaims_DynamicFieldsMatching() throws IllegalAccessException {
-        CustomUserDetails userDetails = generateRandomUserDetails(Role.AUTHORIZED_USER);
-        String token = jwtTokenProvider.generateAccessToken(userDetails);
+    void generateAccessToken_WithAuthorizedUserRole_ProducesValidJwt() {
+        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
+
+        String token = jwtTokenProvider.generateAccessToken(payload);
+
+        assertNotNull(token);
+        assertEquals(3, token.split("\\.").length);
+    }
+
+    @Test
+    void generateAccessToken_WithUnauthorizedUserRole_ProducesValidJwt() {
+        JwtPayload payload = generateRandomPayload("ROLE_UNAUTHORIZED_USER");
+
+        String token = jwtTokenProvider.generateAccessToken(payload);
+
+        assertNotNull(token);
+        assertEquals(3, token.split("\\.").length);
+    }
+
+    @Test
+    void extractAllClaims_ClaimsMatchJwtPayloadFields() {
+        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
+        String token = jwtTokenProvider.generateAccessToken(payload);
 
         Claims claims = jwtTokenProvider.extractAllClaims(token);
 
-        for (Field field : CustomUserDetails.class.getDeclaredFields()) {
-            if (field.isAnnotationPresent(JwtClaim.class)) {
-                field.setAccessible(true);
-                Object expectedValue = field.get(userDetails);
-
-                assertTrue(claims.containsKey(field.getName()));
-                assertEquals(expectedValue.toString(), claims.get(field.getName(), String.class));
-            }
-        }
+        assertEquals(payload.getUserId(), claims.get("userId", String.class));
+        assertEquals(payload.getUsername(), claims.get("username", String.class));
+        assertEquals(payload.getFirstName(), claims.get("firstName", String.class));
+        assertEquals(payload.getLastName(), claims.get("lastName", String.class));
+        assertEquals(payload.getRole(), claims.get("role", String.class));
+        assertEquals(payload.getUserId(), claims.getSubject());
     }
 
     @Test
     void generateAccessToken_WithNullClaimValues_ShouldNotCrash() {
-        CustomUserDetails userDetailsWithNulls = CustomUserDetails.builder()
+        JwtPayload payloadWithNulls = JwtPayload.builder()
                 .userId(null)
-                .username("null-claim-user@test.local")
-                .password("Password123")
+                .username("null-claim-user")
                 .role(null)
                 .build();
 
-        String token = jwtTokenProvider.generateAccessToken(userDetailsWithNulls);
+        String token = jwtTokenProvider.generateAccessToken(payloadWithNulls);
         Claims claims = jwtTokenProvider.extractAllClaims(token);
 
         assertNotNull(token);
@@ -105,13 +115,13 @@ class JwtTokenProviderTest {
 
     @Test
     void extractAllClaims_ExpiredToken_ThrowsExpiredJwtException() throws InterruptedException {
-        JwtTokenProvider shortLivedProvider = new JwtTokenProvider();
+        JwtTokenProvider shortLivedProvider = new JwtTokenProvider(new ObjectMapper());
         ReflectionTestUtils.setField(shortLivedProvider, "jwtSecret", VALID_BASE64_SECRET);
         ReflectionTestUtils.setField(shortLivedProvider, "jwtExpiration", 1L);
         shortLivedProvider.init();
 
-        CustomUserDetails userDetails = generateRandomUserDetails(Role.AUTHORIZED_USER);
-        String expiredToken = shortLivedProvider.generateAccessToken(userDetails);
+        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
+        String expiredToken = shortLivedProvider.generateAccessToken(payload);
 
         Thread.sleep(10);
 
@@ -120,14 +130,14 @@ class JwtTokenProviderTest {
 
     @Test
     void extractAllClaims_InvalidSignature_ThrowsSignatureException() {
-        JwtTokenProvider attackerProvider = new JwtTokenProvider();
+        JwtTokenProvider attackerProvider = new JwtTokenProvider(new ObjectMapper());
         String attackerSecret = Base64.getEncoder().encodeToString("AttackerDifferentSecretKeyForHmacSha256Algorithm9876543210!@#".getBytes());
         ReflectionTestUtils.setField(attackerProvider, "jwtSecret", attackerSecret);
         ReflectionTestUtils.setField(attackerProvider, "jwtExpiration", VALID_EXPIRATION);
         attackerProvider.init();
 
-        CustomUserDetails userDetails = generateRandomUserDetails(Role.ADMIN);
-        String attackerToken = attackerProvider.generateAccessToken(userDetails);
+        JwtPayload payload = generateRandomPayload("ROLE_ADMIN");
+        String attackerToken = attackerProvider.generateAccessToken(payload);
 
         assertThrows(SignatureException.class, () -> jwtTokenProvider.extractAllClaims(attackerToken));
     }

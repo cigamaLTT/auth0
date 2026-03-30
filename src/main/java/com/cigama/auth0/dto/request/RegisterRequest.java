@@ -7,7 +7,6 @@ import lombok.Setter;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -57,13 +56,5 @@ public class RegisterRequest {
     @DateTimeFormat
     @Past
     private LocalDate dateOfBirth;
-
-    ///  -- Client Data --
-
-    // This can be null
-
-    private String clientName;
-
-    private String clientId;
 
 }

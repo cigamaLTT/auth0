@@ -1,7 +1,7 @@
 package com.cigama.auth0.service.security;
 
-import com.cigama.auth0.dto.userdetails.CustomUserDetails;
 import com.cigama.auth0.entity.User;
+import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +16,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     // --- Variables ---
 
     private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
     // --- Core Methods ---
 
@@ -24,6 +25,6 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        return CustomUserDetails.build(user);
+        return userMapper.toCustomUserDetails(user);
     }
 }
