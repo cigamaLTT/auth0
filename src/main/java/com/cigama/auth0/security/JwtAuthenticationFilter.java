@@ -2,6 +2,7 @@ package com.cigama.auth0.security;
 
 import com.cigama.auth0.dto.JwtPayload;
 import com.cigama.auth0.mapper.UserMapper;
+import com.cigama.auth0.service.TokenBlacklistService;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -32,6 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
     private final UserMapper userMapper;
+    private final TokenBlacklistService tokenBlacklistService;
 
     // --- Core Methods ---
 
@@ -42,6 +44,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String jwt = getJwtFromRequest(request);
 
         if (StringUtils.hasText(jwt)) {
+            if (tokenBlacklistService.isBlacklisted(jwt)) {
+                request.setAttribute("jwtExceptionType", "TOKEN_BLACKLISTED");
+                request.setAttribute("jwtExceptionMessage", "This token has been blacklisted due to logout");
+                filterChain.doFilter(request, response);
+                return;
+            }
             try {
                 Claims claims = tokenProvider.extractAllClaims(jwt);
                 JwtPayload payload = objectMapper.convertValue(claims, JwtPayload.class);
