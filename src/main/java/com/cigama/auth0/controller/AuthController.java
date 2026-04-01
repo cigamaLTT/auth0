@@ -66,4 +66,19 @@ public class AuthController {
                         .build()
         );
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<BaseResponse<Void>> logout(
+            @RequestHeader("Authorization") String bearerToken,
+            @Valid @RequestBody RefreshTokenRequest request
+    ) {
+        String accessToken = bearerToken.substring(7);
+        authService.logout(accessToken, request.getRefreshToken());
+        return ResponseEntity.ok(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Logged out successfully")
+                        .build()
+        );
+    }
 }

@@ -14,7 +14,10 @@ import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.AuthService;
+import com.cigama.auth0.service.TokenBlacklistService;
 import com.cigama.auth0.service.ValidationService;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -43,6 +46,8 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
     private final ClientAppRepository clientAppRepository;
+
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -116,6 +121,25 @@ public class AuthServiceImpl implements AuthService {
         }
 
         return generateTokenResponse(user, clientApp);
+    }
+
+    @Override
+    @Transactional
+    public void logout(String accessToken, String refreshTokenRaw) {
+        RefreshToken refreshToken = validationService.validateRefreshToken(refreshTokenRaw);
+        refreshToken.setIsRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+
+        try {
+            long expirationTime = jwtTokenProvider.extractAllClaims(accessToken).getExpiration().getTime();
+            long remainingTtl = expirationTime - System.currentTimeMillis();
+
+            if (remainingTtl > 0) {
+                tokenBlacklistService.blacklistToken(accessToken, remainingTtl);
+            }
+        } catch (Exception e) {
+            // Token expired or invalid, no need to blacklist
+        }
     }
 
     // --- Private Helpers ---
