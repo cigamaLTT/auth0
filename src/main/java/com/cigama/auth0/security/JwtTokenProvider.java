@@ -7,13 +7,17 @@ import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.io.Decoders;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Date;
 import java.util.Map;
 
@@ -23,20 +27,29 @@ public class JwtTokenProvider {
 
     // --- Variables ---
 
-    @Value("${jwt.secret}")
-    private String jwtSecret;
+    @Value("${jwt.private-key}")
+    private String privateKeyString;
+
+    @Value("${jwt.public-key}")
+    private String publicKeyString;
 
     @Value("${jwt.expiration}")
     private long jwtExpiration;
 
     private final ObjectMapper objectMapper;
 
-    private SecretKey signingKey;
+    private PrivateKey privateKey;
+    private PublicKey publicKey;
 
     @PostConstruct
-    public void init() {
-        byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
-        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+    public void init() throws Exception {
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+        byte[] privateKeyBytes = Decoders.BASE64.decode(privateKeyString);
+        this.privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+
+        byte[] publicKeyBytes = Decoders.BASE64.decode(publicKeyString);
+        this.publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
     }
 
     // --- Core Methods ---
@@ -58,7 +71,7 @@ public class JwtTokenProvider {
                 .subject(payload.getUserId())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(signingKey);
+                .signWith(privateKey);
 
         if (payload.getClientId() != null) {
             builder.audience().add(payload.getClientId()).and();
@@ -69,7 +82,7 @@ public class JwtTokenProvider {
 
     public Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(signingKey)
+                .verifyWith(publicKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

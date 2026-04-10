@@ -10,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -21,16 +23,26 @@ class JwtTokenProviderTest {
 
     private JwtTokenProvider jwtTokenProvider;
 
-    private final String RAW_SECRET = "RandomVeryLongSecretKeyForHmacSha256AlgorithmThatExceeds256Bits12345!@#";
-    private final String VALID_BASE64_SECRET = Base64.getEncoder().encodeToString(RAW_SECRET.getBytes());
     private final long VALID_EXPIRATION = 3600000L;
+
+    private String validPrivateKeyBase64;
+    private String validPublicKeyBase64;
 
     // --- Setup ---
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         jwtTokenProvider = new JwtTokenProvider(new ObjectMapper());
-        ReflectionTestUtils.setField(jwtTokenProvider, "jwtSecret", VALID_BASE64_SECRET);
+
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+
+        validPrivateKeyBase64 = Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded());
+        validPublicKeyBase64 = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+
+        ReflectionTestUtils.setField(jwtTokenProvider, "privateKeyString", validPrivateKeyBase64);
+        ReflectionTestUtils.setField(jwtTokenProvider, "publicKeyString", validPublicKeyBase64);
         ReflectionTestUtils.setField(jwtTokenProvider, "jwtExpiration", VALID_EXPIRATION);
         jwtTokenProvider.init();
     }
@@ -114,9 +126,10 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    void extractAllClaims_ExpiredToken_ThrowsExpiredJwtException() throws InterruptedException {
+    void extractAllClaims_ExpiredToken_ThrowsExpiredJwtException() throws Exception {
         JwtTokenProvider shortLivedProvider = new JwtTokenProvider(new ObjectMapper());
-        ReflectionTestUtils.setField(shortLivedProvider, "jwtSecret", VALID_BASE64_SECRET);
+        ReflectionTestUtils.setField(shortLivedProvider, "privateKeyString", validPrivateKeyBase64);
+        ReflectionTestUtils.setField(shortLivedProvider, "publicKeyString", validPublicKeyBase64);
         ReflectionTestUtils.setField(shortLivedProvider, "jwtExpiration", 1L);
         shortLivedProvider.init();
 
@@ -129,10 +142,17 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    void extractAllClaims_InvalidSignature_ThrowsSignatureException() {
+    void extractAllClaims_InvalidSignature_ThrowsSignatureException() throws Exception {
         JwtTokenProvider attackerProvider = new JwtTokenProvider(new ObjectMapper());
-        String attackerSecret = Base64.getEncoder().encodeToString("AttackerDifferentSecretKeyForHmacSha256Algorithm9876543210!@#".getBytes());
-        ReflectionTestUtils.setField(attackerProvider, "jwtSecret", attackerSecret);
+
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair attackerKP = keyPairGenerator.generateKeyPair();
+        String attackerPrivateKey = Base64.getEncoder().encodeToString(attackerKP.getPrivate().getEncoded());
+        String attackerPublicKey = Base64.getEncoder().encodeToString(attackerKP.getPublic().getEncoded());
+
+        ReflectionTestUtils.setField(attackerProvider, "privateKeyString", attackerPrivateKey);
+        ReflectionTestUtils.setField(attackerProvider, "publicKeyString", attackerPublicKey);
         ReflectionTestUtils.setField(attackerProvider, "jwtExpiration", VALID_EXPIRATION);
         attackerProvider.init();
 
@@ -144,7 +164,7 @@ class JwtTokenProviderTest {
 
     @Test
     void extractAllClaims_MalformedToken_ThrowsException() {
-        String malformedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.InvalidPayloadData";
+        String malformedToken = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.InvalidPayloadData";
 
         assertThrows(MalformedJwtException.class, () -> jwtTokenProvider.extractAllClaims(malformedToken));
         assertThrows(IllegalArgumentException.class, () -> jwtTokenProvider.extractAllClaims(""));
