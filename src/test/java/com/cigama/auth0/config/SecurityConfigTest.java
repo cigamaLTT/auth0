@@ -3,6 +3,7 @@ package com.cigama.auth0.config;
 import com.cigama.auth0.security.JwtAuthenticationEntryPoint;
 import com.cigama.auth0.security.JwtAuthenticationFilter;
 import com.cigama.auth0.security.JwtTokenProvider;
+import com.cigama.auth0.service.TokenBlacklistService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(classes = {
         SecurityConfig.class,
         JwtAuthenticationFilter.class,
+        JwtAuthenticationEntryPoint.class,
+        JwtTokenProvider.class,
         SecurityConfigTest.DummyController.class
 })
 @AutoConfigureMockMvc
@@ -48,6 +51,9 @@ class SecurityConfigTest {
 
     @MockitoBean
     private com.cigama.auth0.mapper.UserMapper userMapper;
+
+    @MockitoBean
+    private TokenBlacklistService tokenBlacklistService;
 
     // --- Dummy Controller for Testing ---
 

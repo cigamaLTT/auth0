@@ -4,13 +4,21 @@ import com.cigama.auth0.dto.JwtPayload;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SignatureException;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.*;
 import java.util.Base64;
+import java.util.Date;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,18 +28,33 @@ class JwtTokenProviderTest {
     // --- Variables ---
 
     private JwtTokenProvider jwtTokenProvider;
-
-    private final String RAW_SECRET = "RandomVeryLongSecretKeyForHmacSha256AlgorithmThatExceeds256Bits12345!@#";
-    private final String VALID_BASE64_SECRET = Base64.getEncoder().encodeToString(RAW_SECRET.getBytes());
-    private final long VALID_EXPIRATION = 3600000L;
-
-    // --- Setup ---
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
-    void setUp() {
-        jwtTokenProvider = new JwtTokenProvider(new ObjectMapper());
-        ReflectionTestUtils.setField(jwtTokenProvider, "jwtSecret", VALID_BASE64_SECRET);
-        ReflectionTestUtils.setField(jwtTokenProvider, "jwtExpiration", VALID_EXPIRATION);
+    void setUp() throws Exception {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
+
+        jwtTokenProvider = new JwtTokenProvider(objectMapper);
+
+        KeyPairGenerator rsaGen = KeyPairGenerator.getInstance("RSA");
+        rsaGen.initialize(2048);
+        KeyPair rsaPair = rsaGen.generateKeyPair();
+        String rsaPriv = Base64.getEncoder().encodeToString(rsaPair.getPrivate().getEncoded());
+        String rsaPub = Base64.getEncoder().encodeToString(rsaPair.getPublic().getEncoded());
+
+        KeyPairGenerator mlDsaGen = KeyPairGenerator.getInstance("ML-DSA", "BC");
+        KeyPair mlDsaPair = mlDsaGen.generateKeyPair();
+        String mlPriv = Base64.getEncoder().encodeToString(mlDsaPair.getPrivate().getEncoded());
+        String mlPub = Base64.getEncoder().encodeToString(mlDsaPair.getPublic().getEncoded());
+
+        ReflectionTestUtils.setField(jwtTokenProvider, "rsaPrivateKeyStr", rsaPriv);
+        ReflectionTestUtils.setField(jwtTokenProvider, "rsaPublicKeyStr", rsaPub);
+        ReflectionTestUtils.setField(jwtTokenProvider, "mlDsaPrivateKeyStr", mlPriv);
+        ReflectionTestUtils.setField(jwtTokenProvider, "mlDsaPublicKeyStr", mlPub);
+        ReflectionTestUtils.setField(jwtTokenProvider, "jwtExpiration", 3600000L);
+
         jwtTokenProvider.init();
     }
 
@@ -44,110 +67,116 @@ class JwtTokenProviderTest {
                 .firstName("Test")
                 .lastName("User")
                 .role(role)
+                .clientId("test-client")
                 .build();
     }
-
 
     // --- Test Cases ---
 
     @Test
-    void generateAccessToken_WithAdminRole_ProducesValidJwt() {
+    void generateAndVerifyHybridToken_ShouldSucceed() {
         JwtPayload payload = generateRandomPayload("ROLE_ADMIN");
 
         String token = jwtTokenProvider.generateAccessToken(payload);
-
         assertNotNull(token);
-        assertFalse(token.isBlank());
-        assertEquals(3, token.split("\\.").length);
-    }
-
-    @Test
-    void generateAccessToken_WithAuthorizedUserRole_ProducesValidJwt() {
-        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
-
-        String token = jwtTokenProvider.generateAccessToken(payload);
-
-        assertNotNull(token);
-        assertEquals(3, token.split("\\.").length);
-    }
-
-    @Test
-    void generateAccessToken_WithUnauthorizedUserRole_ProducesValidJwt() {
-        JwtPayload payload = generateRandomPayload("ROLE_UNAUTHORIZED_USER");
-
-        String token = jwtTokenProvider.generateAccessToken(payload);
-
-        assertNotNull(token);
-        assertEquals(3, token.split("\\.").length);
-    }
-
-    @Test
-    void extractAllClaims_ClaimsMatchJwtPayloadFields() {
-        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
-        String token = jwtTokenProvider.generateAccessToken(payload);
+        assertTrue(token.split("\\.").length == 3);
 
         Claims claims = jwtTokenProvider.extractAllClaims(token);
-
-        assertEquals(payload.getUserId(), claims.get("userId", String.class));
-        assertEquals(payload.getUsername(), claims.get("username", String.class));
-        assertEquals(payload.getFirstName(), claims.get("firstName", String.class));
-        assertEquals(payload.getLastName(), claims.get("lastName", String.class));
-        assertEquals(payload.getRole(), claims.get("role", String.class));
         assertEquals(payload.getUserId(), claims.getSubject());
+        assertEquals(payload.getUsername(), claims.get("username"));
+        assertEquals(payload.getRole(), claims.get("role"));
+        assertEquals("test-client", claims.getAudience().iterator().next());
+    }
+
+    @Test
+    void extractAllClaims_InvalidOuterSignature_ThrowsRuntimeException() {
+         JwtPayload payload = generateRandomPayload("ROLE_USER");
+         String token = jwtTokenProvider.generateAccessToken(payload);
+         String tamperedToken = token.substring(0, token.length() - 5) + "abcde";
+
+         assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(tamperedToken));
     }
 
     @Test
     void generateAccessToken_WithNullClaimValues_ShouldNotCrash() {
         JwtPayload payloadWithNulls = JwtPayload.builder()
                 .userId(null)
-                .username("null-claim-user")
+                .username(null)
                 .role(null)
                 .build();
 
         String token = jwtTokenProvider.generateAccessToken(payloadWithNulls);
-        Claims claims = jwtTokenProvider.extractAllClaims(token);
-
         assertNotNull(token);
-        assertNull(claims.get("userId"));
-        assertNull(claims.get("role"));
+
+        Claims claims = jwtTokenProvider.extractAllClaims(token);
         assertNull(claims.getSubject());
+        assertNull(claims.get("username"));
+        assertNull(claims.get("role"));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"invalid.token", "header.payload.signature.extra", "not-a-jwt"})
+    void extractAllClaims_MalformedToken_ThrowsException(String malformedToken) {
+        assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(malformedToken));
     }
 
     @Test
-    void extractAllClaims_ExpiredToken_ThrowsExpiredJwtException() throws InterruptedException {
-        JwtTokenProvider shortLivedProvider = new JwtTokenProvider(new ObjectMapper());
-        ReflectionTestUtils.setField(shortLivedProvider, "jwtSecret", VALID_BASE64_SECRET);
-        ReflectionTestUtils.setField(shortLivedProvider, "jwtExpiration", 1L);
-        shortLivedProvider.init();
+    void extractAllClaims_ExpiredToken_ThrowsExpiredJwtException() throws Exception {
+        JwtTokenProvider expiredProvider = new JwtTokenProvider(objectMapper);
+        ReflectionTestUtils.setField(expiredProvider, "rsaPrivateKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "rsaPrivateKeyStr"));
+        ReflectionTestUtils.setField(expiredProvider, "rsaPublicKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "rsaPublicKeyStr"));
+        ReflectionTestUtils.setField(expiredProvider, "mlDsaPrivateKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "mlDsaPrivateKeyStr"));
+        ReflectionTestUtils.setField(expiredProvider, "mlDsaPublicKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "mlDsaPublicKeyStr"));
+        ReflectionTestUtils.setField(expiredProvider, "jwtExpiration", -5000L); // 5s in the past
+        expiredProvider.init();
 
-        JwtPayload payload = generateRandomPayload("ROLE_AUTHORIZED_USER");
-        String expiredToken = shortLivedProvider.generateAccessToken(payload);
+        JwtPayload payload = generateRandomPayload("ROLE_USER");
+        String token = expiredProvider.generateAccessToken(payload);
 
-        Thread.sleep(10);
-
-        assertThrows(ExpiredJwtException.class, () -> shortLivedProvider.extractAllClaims(expiredToken));
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(token));
+        assertTrue(ex.getCause() instanceof ExpiredJwtException);
     }
 
     @Test
-    void extractAllClaims_InvalidSignature_ThrowsSignatureException() {
-        JwtTokenProvider attackerProvider = new JwtTokenProvider(new ObjectMapper());
-        String attackerSecret = Base64.getEncoder().encodeToString("AttackerDifferentSecretKeyForHmacSha256Algorithm9876543210!@#".getBytes());
-        ReflectionTestUtils.setField(attackerProvider, "jwtSecret", attackerSecret);
-        ReflectionTestUtils.setField(attackerProvider, "jwtExpiration", VALID_EXPIRATION);
+    void verifyToken_WithInvalidInnerJwsFormat_ShouldThrowRuntimeException() {
+        PrivateKey rsaPriv = (PrivateKey) ReflectionTestUtils.getField(jwtTokenProvider, "rsaPrivateKey");
+        String fakeToken = Jwts.builder()
+                .content("this-is-not-a-jws-dots-structure")
+                .signWith(rsaPriv, Jwts.SIG.RS256)
+                .compact();
+
+        assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(fakeToken));
+    }
+
+    @Test
+    void verifyToken_WithFakeInnerSignature_ShouldThrowRuntimeException() throws Exception {
+        JwtTokenProvider attackerProvider = new JwtTokenProvider(objectMapper);
+        KeyPairGenerator mlDsaGen = KeyPairGenerator.getInstance("ML-DSA", "BC");
+        KeyPair attackerMlDsa = mlDsaGen.generateKeyPair();
+
+        ReflectionTestUtils.setField(attackerProvider, "rsaPrivateKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "rsaPrivateKeyStr"));
+        ReflectionTestUtils.setField(attackerProvider, "rsaPublicKeyStr", ReflectionTestUtils.getField(jwtTokenProvider, "rsaPublicKeyStr"));
+        ReflectionTestUtils.setField(attackerProvider, "mlDsaPrivateKeyStr", Base64.getEncoder().encodeToString(attackerMlDsa.getPrivate().getEncoded()));
+        ReflectionTestUtils.setField(attackerProvider, "mlDsaPublicKeyStr", Base64.getEncoder().encodeToString(attackerMlDsa.getPublic().getEncoded()));
+        ReflectionTestUtils.setField(attackerProvider, "jwtExpiration", 3600000L);
         attackerProvider.init();
 
         JwtPayload payload = generateRandomPayload("ROLE_ADMIN");
-        String attackerToken = attackerProvider.generateAccessToken(payload);
+        String fakeToken = attackerProvider.generateAccessToken(payload);
 
-        assertThrows(SignatureException.class, () -> jwtTokenProvider.extractAllClaims(attackerToken));
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(fakeToken));
+        assertTrue(ex.getMessage().contains("Inner ML-DSA signature failed"));
     }
 
     @Test
-    void extractAllClaims_MalformedToken_ThrowsException() {
-        String malformedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.InvalidPayloadData";
+    void verifyToken_WithPlainRsa_ShouldThrowRuntimeException() {
+        PrivateKey rsaPriv = (PrivateKey) ReflectionTestUtils.getField(jwtTokenProvider, "rsaPrivateKey");
+        String plainToken = Jwts.builder()
+                .subject("plain-test")
+                .signWith(rsaPriv, Jwts.SIG.RS256)
+                .compact();
 
-        assertThrows(MalformedJwtException.class, () -> jwtTokenProvider.extractAllClaims(malformedToken));
-        assertThrows(IllegalArgumentException.class, () -> jwtTokenProvider.extractAllClaims(""));
-        assertThrows(IllegalArgumentException.class, () -> jwtTokenProvider.extractAllClaims(null));
+        assertThrows(RuntimeException.class, () -> jwtTokenProvider.extractAllClaims(plainToken));
     }
 }

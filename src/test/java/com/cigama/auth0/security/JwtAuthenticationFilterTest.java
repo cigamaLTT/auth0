@@ -3,6 +3,7 @@ package com.cigama.auth0.security;
 import com.cigama.auth0.dto.JwtPayload;
 import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.dto.userdetails.CustomUserDetails;
+import com.cigama.auth0.service.TokenBlacklistService;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -56,6 +57,9 @@ class JwtAuthenticationFilterTest {
     @Mock
     private FilterChain filterChain;
 
+    @Mock
+    private TokenBlacklistService tokenBlacklistService;
+
     @InjectMocks
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -65,7 +69,7 @@ class JwtAuthenticationFilterTest {
     void setUp() {
         SecurityContextHolder.clearContext();
         objectMapper = new ObjectMapper();
-        jwtAuthenticationFilter = new JwtAuthenticationFilter(tokenProvider, objectMapper, userMapper);
+        jwtAuthenticationFilter = new JwtAuthenticationFilter(tokenProvider, objectMapper, userMapper, tokenBlacklistService);
     }
 
     @AfterEach
@@ -167,11 +171,10 @@ class JwtAuthenticationFilterTest {
     private static Stream<Arguments> provideJwtExceptions() {
         return Stream.of(
                 Arguments.of(new ExpiredJwtException(null, null, "Expired"), "EXPIRED", "Token has expired"),
-                Arguments.of(new MalformedJwtException("Malformed"), "MALFORMED", "Token format is invalid"),
-                Arguments.of(new SignatureException("Signature"), "INVALID_SIGNATURE", "Invalid signature"),
-                Arguments.of(new UnsupportedJwtException("Unsupported"), "UNSUPPORTED", "Unsupported token format"),
-                Arguments.of(new IllegalArgumentException("Illegal"), "ILLEGAL_ARGUMENT", "Token argument is invalid"),
-                Arguments.of(new RuntimeException("Unknown error"), "UNKNOWN", "An unknown error occurred while validating the token")
+                Arguments.of(new MalformedJwtException("Malformed"), "INVALID_SIGNATURE", "Invalid signature or format"),
+                Arguments.of(new SignatureException("Signature"), "INVALID_SIGNATURE", "Invalid signature or format"),
+                Arguments.of(new RuntimeException("PQC Failure"), "VERIFICATION_FAILED", "PQC Failure"),
+                Arguments.of(new RuntimeException("Unknown error"), "VERIFICATION_FAILED", "Unknown error")
         );
     }
 }

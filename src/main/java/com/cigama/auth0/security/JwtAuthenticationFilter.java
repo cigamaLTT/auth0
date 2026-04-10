@@ -71,18 +71,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             } catch (ExpiredJwtException ex) {
                 request.setAttribute("jwtExceptionType", "EXPIRED");
                 request.setAttribute("jwtExceptionMessage", "Token has expired");
-            } catch (MalformedJwtException ex) {
-                request.setAttribute("jwtExceptionType", "MALFORMED");
-                request.setAttribute("jwtExceptionMessage", "Token format is invalid");
-            } catch (SignatureException ex) {
+            } catch (SignatureException | MalformedJwtException ex) {
                 request.setAttribute("jwtExceptionType", "INVALID_SIGNATURE");
-                request.setAttribute("jwtExceptionMessage", "Invalid signature");
-            } catch (UnsupportedJwtException ex) {
-                request.setAttribute("jwtExceptionType", "UNSUPPORTED");
-                request.setAttribute("jwtExceptionMessage", "Unsupported token format");
-            } catch (IllegalArgumentException ex) {
-                request.setAttribute("jwtExceptionType", "ILLEGAL_ARGUMENT");
-                request.setAttribute("jwtExceptionMessage", "Token argument is invalid");
+                request.setAttribute("jwtExceptionMessage", "Invalid signature or format");
+            } catch (RuntimeException ex) {
+                request.setAttribute("jwtExceptionType", "VERIFICATION_FAILED");
+                request.setAttribute("jwtExceptionMessage", ex.getMessage());
             } catch (Exception ex) {
                 request.setAttribute("jwtExceptionType", "UNKNOWN");
                 request.setAttribute("jwtExceptionMessage", "An unknown error occurred while validating the token");
