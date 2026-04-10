@@ -49,6 +49,9 @@ class SecurityConfigTest {
     @MockitoBean
     private com.cigama.auth0.mapper.UserMapper userMapper;
 
+    @MockitoBean
+    private com.cigama.auth0.service.TokenBlacklistService tokenBlacklistService;
+
     // --- Dummy Controller for Testing ---
 
     @RestController

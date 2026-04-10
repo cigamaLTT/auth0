@@ -48,6 +48,9 @@ class JwtAuthenticationFilterTest {
     private UserMapper userMapper;
 
     @Mock
+    private com.cigama.auth0.service.TokenBlacklistService tokenBlacklistService;
+
+    @Mock
     private HttpServletRequest request;
 
     @Mock
@@ -65,7 +68,7 @@ class JwtAuthenticationFilterTest {
     void setUp() {
         SecurityContextHolder.clearContext();
         objectMapper = new ObjectMapper();
-        jwtAuthenticationFilter = new JwtAuthenticationFilter(tokenProvider, objectMapper, userMapper);
+        jwtAuthenticationFilter = new JwtAuthenticationFilter(tokenProvider, objectMapper, userMapper, tokenBlacklistService);
     }
 
     @AfterEach
