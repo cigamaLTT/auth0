@@ -49,6 +49,9 @@ public class User extends BaseAuditEntity {
     @Column(name = "is_authorized", nullable = false)
     private Boolean isAuthorized = true;
 
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean isDeleted = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
     private Role role;
