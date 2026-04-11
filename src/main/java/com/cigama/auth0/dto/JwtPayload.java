@@ -24,4 +24,5 @@ public class JwtPayload {
     private String lastName;
     private String role;
     private String clientId;
+    private String deviceId;
 }
