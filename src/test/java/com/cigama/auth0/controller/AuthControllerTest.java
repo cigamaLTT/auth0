@@ -62,16 +62,16 @@ class AuthControllerTest {
     // --- Test Cases ---
 
     @Test
-    void register_WithValidRequest_ReturnsCreated() throws Exception {
+    void register_WithValidRequest_ReturnsAccepted() throws Exception {
         doNothing().when(authService).register(any(RegisterRequest.class), eq(apiKey));
 
         mockMvc.perform(post("/api/auth/register")
                         .header("X-API-Key", apiKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(registerRequest)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value(HttpStatus.CREATED.value()))
-                .andExpect(jsonPath("$.message").value("User registered successfully"));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value(HttpStatus.ACCEPTED.value()))
+                .andExpect(jsonPath("$.message").value("Registration initialized. Please verify your OTP."));
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.cigama.auth0.entity.RefreshToken;
 import com.cigama.auth0.entity.Role;
 import com.cigama.auth0.entity.User;
 import com.cigama.auth0.mapper.UserMapper;
+import com.cigama.auth0.mapper.RegistrationMapper;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.repository.ClientAppRepository;
@@ -24,6 +25,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cigama.auth0.config.RedisStreamConfig;
+import com.cigama.auth0.dto.cache.PendingUserData;
+import com.cigama.auth0.event.dto.PendingRegistrationEvent;
+import com.cigama.auth0.util.RedisLuaScripts;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import tools.jackson.databind.ObjectMapper;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -32,6 +43,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.HashSet;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -45,37 +57,120 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
+    private final RegistrationMapper registrationMapper;
     private final ClientAppRepository clientAppRepository;
-
     private final TokenBlacklistService tokenBlacklistService;
+    private final RedisTemplate<String, Object> streamRedisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
 
+    @Value("${app.registration.otp-expiration}")
+    private int otpExpiration;
+
+    @Value("${app.registration.stream-key}")
+    private String registrationStreamKey;
+
+    @Value("${app.registration.lock-prefix-email}")
+    private String emailLockPrefix;
+
+    @Value("${app.registration.lock-prefix-username}")
+    private String usernameLockPrefix;
+
     // --- Public Methods ---
 
     /**
-     * Validates unique constraints and API key, maps the request to a User entity via MapStruct,
-     * then encodes the password and persists the user with optional client association.
+     * Validates unique constraints and API key, then caches the registration payload
+     * in Redis and pushes an event to a Redis Stream for async email processing.
+     */
+    @Override
+    public void register(RegisterRequest request, String apiKey) {
+        ClientApp clientApp = validationService.validateRegistration(request, apiKey);
+        
+        String generatedOtp = String.format("%06d", new SecureRandom().nextInt(999999));
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+        String clientIdStr = clientApp != null ? clientApp.getClientId().toString() : null;
+        
+        PendingUserData pendingData = registrationMapper.toPendingUserData(request, encodedPassword, generatedOtp, clientIdStr);
+        
+        String payloadJson;
+        try {
+            payloadJson = objectMapper.writeValueAsString(pendingData);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize pending user data", e);
+        }
+        
+        String emailLockKey = emailLockPrefix + request.getEmail();
+        String usernameLockKey = usernameLockPrefix + request.getUsername();
+        
+        Long result = streamRedisTemplate.execute(
+                new DefaultRedisScript<>(RedisLuaScripts.SET_PENDING_USER, Long.class),
+                List.of(emailLockKey, usernameLockKey),
+                payloadJson,
+                String.valueOf(otpExpiration)
+        );
+        // Return 0 if the keys are already taken
+        if (result == null || result == 0) {
+            throw new RuntimeException("Email or Username is already taken.");
+        }
+        PendingRegistrationEvent event = registrationMapper.toRegistrationEvent(request, emailLockKey, generatedOtp);
+        
+        try {
+            String eventJson = objectMapper.writeValueAsString(event);
+            streamRedisTemplate.opsForStream().add(
+                    StreamRecords.newRecord()
+                            .in(registrationStreamKey)
+                            .ofObject(eventJson)
+                            .withId(RecordId.autoGenerate())
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize registration event", e);
+        }
+    }
+
+    /**
+     * Verifies the provided OTP code against the cached payload in Redis.
+     * If valid, saves the User to the database and clears the cache locks.
      */
     @Override
     @Transactional
-    public void register(RegisterRequest request, String apiKey) {
-        ClientApp clientApp = validationService.validateRegistration(request, apiKey);
-        User user = userMapper.toUser(request);
-
-        user.setRole(Role.UNAUTHORIZED_USER);
-        user.setIsAuthorized(false);
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-
-        if (clientApp != null) {
-            if (user.getClientApps() == null) {
-                user.setClientApps(new HashSet<>());
-            }
-            user.getClientApps().add(clientApp);
+    public void verifyOtp(String email, String otpCode) {
+        String emailLockKey = emailLockPrefix + email;
+        Object payloadObj = streamRedisTemplate.opsForValue().get(emailLockKey);
+        
+        if (payloadObj == null) {
+            throw new RuntimeException("OTP expired or invalid.");
         }
-
+        
+        PendingUserData pendingData;
+        try {
+            pendingData = objectMapper.readValue(payloadObj.toString(), PendingUserData.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse cached user data", e);
+        }
+        
+        if (!pendingData.getOtpCode().equals(otpCode)) {
+            throw new RuntimeException("Invalid OTP code.");
+        }
+        
+        User user = registrationMapper.pendingToUser(pendingData);
+        user.setRole(Role.UNAUTHORIZED_USER);
+        user.setIsAuthorized(true);
+        
+        if (pendingData.getClientId() != null) {
+            ClientApp clientApp = clientAppRepository.findById(java.util.UUID.fromString(pendingData.getClientId())).orElse(null);
+            if (clientApp != null) {
+                if (user.getClientApps() == null) {
+                    user.setClientApps(new HashSet<>());
+                }
+                user.getClientApps().add(clientApp);
+            }
+        }
+        
         userRepository.save(user);
+
+        streamRedisTemplate.delete(List.of(emailLockKey, usernameLockPrefix + pendingData.getUsername()));
     }
 
     /**

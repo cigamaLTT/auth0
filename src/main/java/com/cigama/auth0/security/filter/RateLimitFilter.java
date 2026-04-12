@@ -15,6 +15,7 @@ import java.io.IOException;
  * Filter to apply rate limiting before reaching the Controller layer.
  */
 @Component
+
 @RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -24,10 +25,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         
-        String clientIp = request.getHeader("X-Forwarded-For");
-        if (clientIp == null) {
-            clientIp = request.getRemoteAddr();
-        }
+        String clientIp = request.getRemoteAddr();
 
         if (!rateLimitService.isAllowed(clientIp)) {
             response.setStatus(429);

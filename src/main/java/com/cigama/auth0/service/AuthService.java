@@ -10,6 +10,8 @@ public interface AuthService {
 
     void register(RegisterRequest request, String apiKey);
 
+    void verifyOtp(String email, String otpCode);
+
     TokenResponse login(LoginRequest request, String apiKey);
 
     TokenResponse refresh(String refreshToken);

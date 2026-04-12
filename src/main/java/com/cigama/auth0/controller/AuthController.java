@@ -24,16 +24,38 @@ public class AuthController {
 
     // --- Public Endpoints ---
 
+
     @PostMapping("/register")
     public ResponseEntity<BaseResponse<Void>> register(
             @Valid @RequestBody RegisterRequest request,
             @RequestHeader(value = "X-API-Key", required = false) String apiKey
     ) {
         authService.register(request, apiKey);
-        return ResponseEntity.status(HttpStatus.CREATED).body(
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(
                 BaseResponse.<Void>builder()
-                        .status(HttpStatus.CREATED.value())
-                        .message("User registered successfully")
+                        .status(HttpStatus.ACCEPTED.value())
+                        .message("Registration initialized. Please verify your OTP.")
+                        .build()
+        );
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<BaseResponse<Void>> verifyOtp(
+            @Valid @RequestBody com.cigama.auth0.dto.request.VerifyOtpRequest request
+    ) {
+        if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.REGISTER) {
+            authService.verifyOtp(request.getEmail(), request.getOtpCode());
+            return ResponseEntity.ok(
+                    BaseResponse.<Void>builder()
+                            .status(HttpStatus.OK.value())
+                            .message("OTP verified successfully. Please proceed to login.")
+                            .build()
+            );
+        }
+        return ResponseEntity.badRequest().body(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .message("Unsupported OTP purpose")
                         .build()
         );
     }
