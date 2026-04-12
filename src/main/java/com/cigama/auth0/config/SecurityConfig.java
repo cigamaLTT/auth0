@@ -2,6 +2,7 @@ package com.cigama.auth0.config;
 
 import com.cigama.auth0.security.JwtAuthenticationEntryPoint;
 import com.cigama.auth0.security.JwtAuthenticationFilter;
+import com.cigama.auth0.security.LocalOnlyFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +29,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final LocalOnlyFilter localOnlyFilter;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -46,9 +48,17 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/error").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**", 
+                                "/api/docs/**", 
+                                "/v3/api-docs/**", 
+                                "/api/swagger-ui/**",
+                                "/swagger-ui/**", 
+                                "/error"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(localOnlyFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

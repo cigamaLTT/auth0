@@ -11,11 +11,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Tag(name = "Authentication", description = "Endpoints for user registration, login, and token management")
 public class AuthController {
 
     // --- Variables ---
@@ -25,6 +29,7 @@ public class AuthController {
     // --- Public Endpoints ---
 
 
+    @Operation(summary = "Register a new user", description = "Initializes registration and sends an OTP via email.")
     @PostMapping("/register")
     public ResponseEntity<BaseResponse<Void>> register(
             @Valid @RequestBody RegisterRequest request,
@@ -39,6 +44,7 @@ public class AuthController {
         );
     }
 
+    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email to complete registration.")
     @PostMapping("/verify-otp")
     public ResponseEntity<BaseResponse<Void>> verifyOtp(
             @Valid @RequestBody com.cigama.auth0.dto.request.VerifyOtpRequest request
@@ -60,6 +66,7 @@ public class AuthController {
         );
     }
 
+    @Operation(summary = "Login", description = "Authenticates a user and returns access and refresh tokens.")
     @PostMapping("/login")
     public ResponseEntity<BaseResponse<TokenResponse>> login(
             @Valid @RequestBody LoginRequest request,
@@ -75,6 +82,7 @@ public class AuthController {
         );
     }
 
+    @Operation(summary = "Refresh Token", description = "Generates a new access token using a valid refresh token.")
     @PostMapping("/refresh")
     public ResponseEntity<BaseResponse<TokenResponse>> refresh(
             @Valid @RequestBody RefreshTokenRequest request
@@ -89,6 +97,8 @@ public class AuthController {
         );
     }
 
+    @Operation(summary = "Logout", description = "Revokes the given access and refresh tokens.")
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/logout")
     public ResponseEntity<BaseResponse<Void>> logout(
             @RequestHeader("Authorization") String bearerToken,
