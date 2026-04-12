@@ -110,21 +110,23 @@ public class AuthServiceImpl implements AuthService {
                 payloadJson,
                 String.valueOf(otpExpiration)
         );
-        
-        
         // Return 0 if the keys are already taken
         if (result == null || result == 0) {
             throw new RuntimeException("Email or Username is already taken.");
         }
-        
         PendingRegistrationEvent event = registrationMapper.toRegistrationEvent(request, emailLockKey, generatedOtp);
-                
-        streamRedisTemplate.opsForStream().add(
-                StreamRecords.newRecord()
-                        .in(registrationStreamKey)
-                        .ofObject(event)
-                        .withId(RecordId.autoGenerate())
-        );
+        
+        try {
+            String eventJson = objectMapper.writeValueAsString(event);
+            streamRedisTemplate.opsForStream().add(
+                    StreamRecords.newRecord()
+                            .in(registrationStreamKey)
+                            .ofObject(eventJson)
+                            .withId(RecordId.autoGenerate())
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize registration event", e);
+        }
     }
 
     /**

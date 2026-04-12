@@ -27,32 +27,31 @@ public class RedisStreamConfig {
 
 
     @Bean
-    public RedisTemplate<String, Object> streamRedisTemplate(RedisConnectionFactory factory, ObjectMapper objectMapper) {
+    public RedisTemplate<String, Object> streamRedisTemplate(RedisConnectionFactory factory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(factory);
         template.setKeySerializer(new StringRedisSerializer());
         template.setHashKeySerializer(new StringRedisSerializer());
-        
-        GenericJacksonJsonRedisSerializer jsonSerializer = new GenericJacksonJsonRedisSerializer(objectMapper);
-        template.setValueSerializer(jsonSerializer);
-        template.setHashValueSerializer(jsonSerializer);
+        // String serializer prevents double-quoting which breaks Lua scripts and Streams
+        template.setValueSerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(new StringRedisSerializer());
         
         return template;
     }
 
     @Bean
-    public StreamMessageListenerContainer<String, ObjectRecord<String, PendingRegistrationEvent>> registrationStreamListenerContainer
+    public StreamMessageListenerContainer<String, ObjectRecord<String, String>> registrationStreamListenerContainer
             (
                 RedisConnectionFactory factory,
                 RegistrationStreamListener listener
             ) {
-        StreamMessageListenerContainerOptions<String, ObjectRecord<String, PendingRegistrationEvent>> options =
+        StreamMessageListenerContainerOptions<String, ObjectRecord<String, String>> options =
                 StreamMessageListenerContainerOptions.builder()
                         .pollTimeout(Duration.ofMillis(100))
-                        .targetType(PendingRegistrationEvent.class)
+                        .targetType(String.class)
                         .build();
 
-        StreamMessageListenerContainer<String, ObjectRecord<String, PendingRegistrationEvent>> container =
+        StreamMessageListenerContainer<String, ObjectRecord<String, String>> container =
                 StreamMessageListenerContainer.create(factory, options);
 
         container.receive(StreamOffset.create(REGISTRATION_STREAM_KEY, ReadOffset.lastConsumed()), listener);

@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.stream.ObjectRecord;
 import org.springframework.data.redis.core.RedisTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -22,16 +23,19 @@ class RegistrationStreamListenerTest {
     private EmailService emailService;
     @Mock
     private RedisTemplate<String, Object> streamRedisTemplate;
+    @Mock
+    private ObjectMapper objectMapper;
 
     @InjectMocks
     private RegistrationStreamListener listener;
 
     private PendingRegistrationEvent event;
-    private ObjectRecord<String, PendingRegistrationEvent> message;
+    private ObjectRecord<String, String> message;
+    private String eventJson = "{\"email\":\"test@example.com\"}";
 
     @BeforeEach
     @SuppressWarnings("unchecked")
-    void setUp() {
+    void setUp() throws Exception {
         event = PendingRegistrationEvent.builder()
                 .email("test@example.com")
                 .username("testuser")
@@ -39,7 +43,8 @@ class RegistrationStreamListenerTest {
                 .otpCode("123456")
                 .build();
         message = mock(ObjectRecord.class);
-        when(message.getValue()).thenReturn(event);
+        when(message.getValue()).thenReturn(eventJson);
+        when(objectMapper.readValue(eventJson, PendingRegistrationEvent.class)).thenReturn(event);
     }
 
     @Test
