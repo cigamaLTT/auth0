@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.util.Map;
 
 /**
  * Event triggered when a user registration is pending (awaiting OTP/Verification).
@@ -22,5 +21,4 @@ public class PendingRegistrationEvent implements Serializable {
     private String username;
     private String registrationId;
     private String otpCode;
-    private Map<String, Object> metadata;
 }
