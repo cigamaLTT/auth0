@@ -3,16 +3,15 @@ package com.cigama.auth0.service.impl;
 import com.cigama.auth0.dto.JwtPayload;
 import com.cigama.auth0.dto.cache.PendingPasswordResetData;
 import com.cigama.auth0.dto.cache.PendingUserData;
-import com.cigama.auth0.dto.request.ForgotPasswordRequest;
-import com.cigama.auth0.dto.request.LoginRequest;
-import com.cigama.auth0.dto.request.RegisterRequest;
-import com.cigama.auth0.dto.request.ResetPasswordRequest;
+import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.entity.ClientApp;
 import com.cigama.auth0.entity.RefreshToken;
 import com.cigama.auth0.entity.Role;
 import com.cigama.auth0.entity.User;
+import com.cigama.auth0.event.dto.ForgotPasswordEvent;
+import com.cigama.auth0.event.dto.PendingRegistrationEvent;
 import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.mapper.PasswordResetMapper;
 import com.cigama.auth0.mapper.UserMapper;
@@ -24,23 +23,19 @@ import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.AuthService;
 import com.cigama.auth0.service.TokenBlacklistService;
 import com.cigama.auth0.service.ValidationService;
+import com.cigama.auth0.util.RedisLuaScripts;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import com.cigama.auth0.config.RedisStreamConfig;
-import com.cigama.auth0.dto.cache.PendingUserData;
-import com.cigama.auth0.event.dto.PendingRegistrationEvent;
-import com.cigama.auth0.util.RedisLuaScripts;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -52,6 +47,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -116,7 +112,7 @@ public class AuthServiceImpl implements AuthService {
         try {
             payloadJson = objectMapper.writeValueAsString(pendingData);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to serialize pending user data", e);
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize pending user data");
         }
         
         String emailLockKey = emailLockPrefix + request.getEmail();
@@ -130,7 +126,7 @@ public class AuthServiceImpl implements AuthService {
         );
         // Return 0 if the keys are already taken
         if (result == null || result == 0) {
-            throw new RuntimeException("Email or Username is already taken.");
+            throw new CustomException(HttpStatus.CONFLICT, "Email or Username is already taken.");
         }
         PendingRegistrationEvent event = registrationMapper.toRegistrationEvent(request, emailLockKey, generatedOtp);
         
@@ -143,7 +139,7 @@ public class AuthServiceImpl implements AuthService {
                             .withId(RecordId.autoGenerate())
             );
         } catch (Exception e) {
-            throw new RuntimeException("Failed to serialize registration event", e);
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize registration event");
         }
     }
 
@@ -158,18 +154,18 @@ public class AuthServiceImpl implements AuthService {
         Object payloadObj = streamRedisTemplate.opsForValue().get(emailLockKey);
         
         if (payloadObj == null) {
-            throw new RuntimeException("OTP expired or invalid.");
+            throw new CustomException(HttpStatus.BAD_REQUEST, "OTP expired or invalid.");
         }
         
         PendingUserData pendingData;
         try {
             pendingData = objectMapper.readValue(payloadObj.toString(), PendingUserData.class);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse cached user data", e);
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to parse cached user data");
         }
         
         if (!pendingData.getOtpCode().equals(otpCode)) {
-            throw new RuntimeException("Invalid OTP code.");
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Invalid OTP code.");
         }
         
         User user = registrationMapper.pendingToUser(pendingData);
@@ -177,7 +173,7 @@ public class AuthServiceImpl implements AuthService {
         user.setIsAuthorized(true);
         
         if (pendingData.getClientId() != null) {
-            ClientApp clientApp = clientAppRepository.findById(java.util.UUID.fromString(pendingData.getClientId())).orElse(null);
+            ClientApp clientApp = clientAppRepository.findById(UUID.fromString(pendingData.getClientId())).orElse(null);
             if (clientApp != null) {
                 if (user.getClientApps() == null) {
                     user.setClientApps(new HashSet<>());
@@ -196,10 +192,14 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     @Transactional
-    public TokenResponse login(LoginRequest request, String apiKey) {
-        User user = validationService.validateLogin(request);
-        ClientApp clientApp = validationService.validateApiKey(apiKey);
+    public TokenResponse login(LoginRequest request, String apiKey, ClientMetadata metadata) {
+        ClientApp clientApp = null;
+        if (apiKey != null) {
+            clientApp = validationService.validateApiKey(apiKey);
+        }
 
+        User user = validationService.validateLogin(request);
+        
         if (clientApp != null) {
             if (user.getClientApps() == null) {
                 user.setClientApps(new HashSet<>());
@@ -209,7 +209,7 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        return generateTokenResponse(user, clientApp);
+        return generateTokenResponse(user, clientApp, metadata);
     }
 
     /**
@@ -217,11 +217,11 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     @Transactional
-    public TokenResponse refresh(String refreshTokenRaw) {
+    public TokenResponse refresh(String refreshTokenRaw, ClientMetadata metadata) {
         RefreshToken oldToken = validationService.validateRefreshToken(refreshTokenRaw);
 
         User user = userRepository.findById(oldToken.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found from valid refresh token"));
+                .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found from valid refresh token"));
 
         if (!oldToken.getIsRevoked()) {
             oldToken.setIsRevoked(true);
@@ -233,7 +233,13 @@ public class AuthServiceImpl implements AuthService {
             clientApp = clientAppRepository.findById(oldToken.getClientId()).orElse(null);
         }
 
-        return generateTokenResponse(user, clientApp);
+        // Reuse device info from old token if not provided in metadata
+        if (metadata != null) {
+            if (metadata.getDeviceId() == null) metadata.setDeviceId(oldToken.getDeviceId());
+            if (metadata.getDeviceName() == null) metadata.setDeviceName(oldToken.getDeviceName());
+        }
+
+        return generateTokenResponse(user, clientApp, metadata);
     }
 
     @Override
@@ -294,7 +300,7 @@ public class AuthServiceImpl implements AuthService {
             return;
         }
 
-        com.cigama.auth0.event.dto.ForgotPasswordEvent event = passwordResetMapper.toForgotPasswordEvent(request, lockKey, otp);
+        ForgotPasswordEvent event = passwordResetMapper.toForgotPasswordEvent(request, lockKey, otp);
 
         try {
             String eventJson = objectMapper.writeValueAsString(event);
@@ -380,13 +386,15 @@ public class AuthServiceImpl implements AuthService {
             tokenBlacklistService.blacklistToken(resetToken, remainingTtl);
         }
 
-        refreshTokenRepository.deleteByUserId(user.getUserId());
+        if (Boolean.TRUE.equals(request.getRevokeOtherSessions())) {
+            refreshTokenRepository.deleteByUserId(user.getUserId());
+        }
     }
 
     // --- Private Helpers ---
 
 
-    private TokenResponse generateTokenResponse(User user, ClientApp clientApp) {
+    private TokenResponse generateTokenResponse(User user, ClientApp clientApp, ClientMetadata metadata) {
         String clientIdStr = clientApp != null ? clientApp.getClientId().toString() : null;
         JwtPayload jwtPayload = userMapper.toJwtPayload(user, clientIdStr);
         String accessToken = jwtTokenProvider.generateAccessToken(jwtPayload);
@@ -400,6 +408,16 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenEntity.setTokenHash(refreshTokenHash);
         refreshTokenEntity.setExpiredAt(LocalDateTime.now().plusSeconds(refreshExpiration / 1000));
         refreshTokenEntity.setIsRevoked(false);
+
+        // Capture device information from metadata
+        if (metadata != null) {
+            refreshTokenEntity.setDeviceId(metadata.getDeviceId());
+            refreshTokenEntity.setDeviceName(metadata.getDeviceName());
+            refreshTokenEntity.setIpAddress(metadata.getIpAddress());
+            refreshTokenEntity.setUserAgent(metadata.getUserAgent());
+        }
+        refreshTokenEntity.setLastUsedAt(LocalDateTime.now());
+
         refreshTokenRepository.save(refreshTokenEntity);
 
         return TokenResponse.builder()
@@ -422,7 +440,7 @@ public class AuthServiceImpl implements AuthService {
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().withLowerCase().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm not found", e);
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "SHA-256 algorithm not found");
         }
     }
 }

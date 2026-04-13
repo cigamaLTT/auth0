@@ -24,4 +24,6 @@ public class ResetPasswordRequest {
             message = "Password must contain at least 1 uppercase letter"
     )
     private String confirmPassword;
+
+    private Boolean revokeOtherSessions = true;
 }

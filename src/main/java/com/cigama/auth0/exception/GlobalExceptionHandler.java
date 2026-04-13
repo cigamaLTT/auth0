@@ -13,6 +13,12 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // --- Exception Handlers ---
+
+
+    /**
+     * Handles business logic exceptions.
+     */
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<BaseResponse<Void>> handleCustomException(CustomException ex) {
         BaseResponse<Void> response = BaseResponse.<Void>builder()
@@ -22,6 +28,9 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, ex.getStatus());
     }
 
+    /**
+     * Handles bean validation errors.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<BaseResponse<Void>> handleValidationException(MethodArgumentNotValidException ex) {
         String errorMessage = ex.getBindingResult().getFieldErrors().stream()
@@ -35,11 +44,14 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Fallback handler for all uncaught exceptions.
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<BaseResponse<Void>> handleGeneralException(Exception ex) {
         BaseResponse<Void> response = BaseResponse.<Void>builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .message("Internal Server Error: " + ex.getMessage())
+                .message("Internal Server Error")
                 .build();
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }

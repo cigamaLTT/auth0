@@ -21,9 +21,13 @@ import tools.jackson.databind.ObjectMapper;
 public class ForgotPasswordStreamListener
         implements StreamListener<String, ObjectRecord<String, String>> {
 
+    // --- Variables ---
+
     private final EmailService emailService;
     private final RedisTemplate<String, Object> streamRedisTemplate;
     private final ObjectMapper objectMapper;
+
+    // --- Methods ---
 
     @Override
     public void onMessage(ObjectRecord<String, String> message) {

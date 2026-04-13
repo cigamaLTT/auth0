@@ -1,14 +1,12 @@
 package com.cigama.auth0.controller;
 
-import com.cigama.auth0.dto.request.ForgotPasswordRequest;
-import com.cigama.auth0.dto.request.LoginRequest;
-import com.cigama.auth0.dto.request.RefreshTokenRequest;
-import com.cigama.auth0.dto.request.RegisterRequest;
-import com.cigama.auth0.dto.request.ResetPasswordRequest;
+import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.service.AuthService;
+import com.cigama.auth0.util.RequestUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 
 
 @RestController
@@ -50,10 +47,10 @@ public class AuthController {
 
     @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email. For REGISTER: completes registration. For FORGOT_PASSWORD: returns a password-reset token.")
     @PostMapping("/verify-otp")
-    public ResponseEntity<?> verifyOtp(
-            @Valid @RequestBody com.cigama.auth0.dto.request.VerifyOtpRequest request
+    public ResponseEntity<BaseResponse<?>> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request
     ) {
-        if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.REGISTER) {
+        if (request.getPurpose() == OtpPurpose.REGISTER) {
             authService.verifyOtp(request.getEmail(), request.getOtpCode());
             return ResponseEntity.ok(
                     BaseResponse.<Void>builder()
@@ -62,7 +59,7 @@ public class AuthController {
                             .build()
             );
         }
-        if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.FORGOT_PASSWORD) {
+        if (request.getPurpose() == OtpPurpose.FORGOT_PASSWORD) {
             VerifyOtpResponse result = authService.verifyOtpForPasswordReset(request.getEmail(), request.getOtpCode());
             return ResponseEntity.ok(
                     BaseResponse.<VerifyOtpResponse>builder()
@@ -84,9 +81,11 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<BaseResponse<TokenResponse>> login(
             @Valid @RequestBody LoginRequest request,
-            @RequestHeader(value = "X-API-Key", required = false) String apiKey
+            @RequestHeader(value = "X-API-Key", required = false) String apiKey,
+            HttpServletRequest servletRequest
     ) {
-        TokenResponse response = authService.login(request, apiKey);
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, request);
+        TokenResponse response = authService.login(request, apiKey, metadata);
         return ResponseEntity.ok(
                 BaseResponse.<TokenResponse>builder()
                         .status(HttpStatus.OK.value())
@@ -99,9 +98,11 @@ public class AuthController {
     @Operation(summary = "Refresh Token", description = "Generates a new access token using a valid refresh token.")
     @PostMapping("/refresh")
     public ResponseEntity<BaseResponse<TokenResponse>> refresh(
-            @Valid @RequestBody RefreshTokenRequest request
+            @Valid @RequestBody RefreshTokenRequest request,
+            HttpServletRequest servletRequest
     ) {
-        TokenResponse response = authService.refresh(request.getRefreshToken());
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, null);
+        TokenResponse response = authService.refresh(request.getRefreshToken(), metadata);
         return ResponseEntity.ok(
                 BaseResponse.<TokenResponse>builder()
                         .status(HttpStatus.OK.value())

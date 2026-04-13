@@ -34,4 +34,19 @@ public class RefreshToken extends BaseAuditEntity {
 
     @Column(name = "is_revoked", nullable = false)
     private Boolean isRevoked = false;
+
+    @Column(name = "device_id")
+    private UUID deviceId;
+
+    @Column(name = "device_name")
+    private String deviceName;
+
+    @Column(name = "ip_address")
+    private String ipAddress;
+
+    @Column(name = "user_agent")
+    private String userAgent;
+
+    @Column(name = "last_used_at")
+    private LocalDateTime lastUsedAt;
 }

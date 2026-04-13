@@ -22,12 +22,16 @@ import java.util.List;
 public class RegistrationStreamListener
         implements StreamListener<String, ObjectRecord<String, String>> {
 
+    // --- Variables ---
+
     private final EmailService emailService;
     private final RedisTemplate<String, Object> streamRedisTemplate;
     private final ObjectMapper objectMapper;
 
     @Value("${app.registration.lock-prefix-username}")
     private String usernameLockPrefix;
+
+    // --- Methods ---
 
     @Override
     public void onMessage(ObjectRecord<String, String> message) {
