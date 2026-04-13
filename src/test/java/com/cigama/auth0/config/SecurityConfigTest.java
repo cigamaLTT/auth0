@@ -52,6 +52,9 @@ class SecurityConfigTest {
     @MockitoBean
     private com.cigama.auth0.service.TokenBlacklistService tokenBlacklistService;
 
+    @MockitoBean
+    private com.cigama.auth0.security.LocalOnlyFilter localOnlyFilter;
+
     // --- Dummy Controller for Testing ---
 
     @RestController
@@ -76,6 +79,13 @@ class SecurityConfigTest {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
             return null;
         }).when(jwtAuthenticationEntryPoint).commence(any(), any(), any());
+
+        // Make the mock filter continue the chain
+        doAnswer(invocation -> {
+            ((jakarta.servlet.FilterChain) invocation.getArgument(2))
+                    .doFilter(invocation.getArgument(0), invocation.getArgument(1));
+            return null;
+        }).when(localOnlyFilter).doFilter(any(), any(), any());
     }
 
     // --- Tests ---

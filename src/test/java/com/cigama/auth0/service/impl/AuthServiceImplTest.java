@@ -102,8 +102,13 @@ class AuthServiceImplTest {
         
         when(validationService.validateRegistration(any(), any())).thenReturn(null);
         when(passwordEncoder.encode(any())).thenReturn("hashed");
-        when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(new PendingUserData());
-        when(registrationMapper.toRegistrationEvent(any(), any(), any())).thenReturn(new PendingRegistrationEvent());
+        
+        PendingUserData pendingData = new PendingUserData("newuser", "new@example.com", "hashed", "123456", null, null, null, null, null);
+        when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(pendingData);
+        
+        PendingRegistrationEvent event = new PendingRegistrationEvent("new@example.com", "username", "123456", "lock");
+        when(registrationMapper.toRegistrationEvent(any(), any(), any())).thenReturn(event);
+        
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
         
         when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(1L);
@@ -131,7 +136,9 @@ class AuthServiceImplTest {
         
         when(validationService.validateRegistration(any(), any())).thenReturn(null);
         when(passwordEncoder.encode(any())).thenReturn("hashed");
-        when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(new PendingUserData());
+        
+        PendingUserData pendingData = new PendingUserData("takenuser", "taken@example.com", "hashed", "123456", null, null, null, null, null);
+        when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(pendingData);
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
         
         // Lua script returns 0 = conflict
@@ -154,9 +161,7 @@ class AuthServiceImplTest {
         when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.get(anyString())).thenReturn(json);
         
-        PendingUserData pendingData = new PendingUserData();
-        pendingData.setOtpCode(otp);
-        pendingData.setUsername("testuser");
+        PendingUserData pendingData = new PendingUserData(email, null, "hashed", null, null, "testuser", null, otp, null);
         when(objectMapper.readValue(anyString(), eq(PendingUserData.class))).thenReturn(pendingData);
         
         User user = new User();
@@ -182,8 +187,7 @@ class AuthServiceImplTest {
         when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.get(anyString())).thenReturn(json);
         
-        PendingUserData pendingData = new PendingUserData();
-        pendingData.setOtpCode("123456");
+        PendingUserData pendingData = new PendingUserData("testuser", email, "hashed", "123456", null, null, null, null, null);
         when(objectMapper.readValue(anyString(), eq(PendingUserData.class))).thenReturn(pendingData);
 
         // Act & Assert

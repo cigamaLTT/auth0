@@ -1,20 +1,22 @@
 package com.cigama.auth0.service.impl;
 
 import com.cigama.auth0.service.TokenBlacklistService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class TokenBlacklistServiceImpl implements TokenBlacklistService {
 
     // --- Variables ---
 
     private final RedisTemplate<String, String> redisTemplate;
     private static final String BLACKLIST_PREFIX = "blacklist:";
+
+    public TokenBlacklistServiceImpl(RedisTemplate<String, String> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     // --- Core Methods ---
 

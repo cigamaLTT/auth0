@@ -2,15 +2,17 @@ package com.cigama.auth0.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
-import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
 public class ConfigurableLengthValidator implements ConstraintValidator<ConfigurableLength, String> {
 
     private final Environment environment;
+
+    public ConfigurableLengthValidator(Environment environment) {
+        this.environment = environment;
+    }
 
     private String minKey;
     private String maxKey;

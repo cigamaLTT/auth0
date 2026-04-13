@@ -7,7 +7,6 @@ import com.cigama.auth0.service.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,12 +17,15 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/sessions")
-@RequiredArgsConstructor
 @Tag(name = "Session Management", description = "Endpoints for managing active user sessions and devices.")
 @SecurityRequirement(name = "bearerAuth")
 public class SessionController {
 
     private final SessionService sessionService;
+
+    public SessionController(SessionService sessionService) {
+        this.sessionService = sessionService;
+    }
 
     @Operation(summary = "Get Active Sessions", description = "Retrieves a list of all active sessions/devices for the authenticated user.")
     @GetMapping
@@ -34,11 +36,7 @@ public class SessionController {
         List<SessionResponse> sessions = sessionService.getSessions(userId);
         
         return ResponseEntity.ok(
-                BaseResponse.<List<SessionResponse>>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Active sessions retrieved successfully")
-                        .data(sessions)
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Active sessions retrieved successfully", sessions)
         );
     }
 
@@ -52,10 +50,7 @@ public class SessionController {
         sessionService.revokeSession(userId, deviceId);
         
         return ResponseEntity.ok(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Session revoked successfully")
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Session revoked successfully", null)
         );
     }
 }

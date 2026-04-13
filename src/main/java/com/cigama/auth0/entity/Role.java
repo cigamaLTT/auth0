@@ -1,10 +1,6 @@
 package com.cigama.auth0.entity;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
-@Getter
-@RequiredArgsConstructor
 public enum Role {
     ADMIN("ROLE_ADMIN"),
     UNAUTHORIZED_USER("ROLE_UNAUTHORIZED_USER"),
@@ -12,4 +8,12 @@ public enum Role {
     THIRD_PARTY_CLIENT("ROLE_THIRD_PARTY_CLIENT");
 
     private final String authority;
+
+    Role(String authority) {
+        this.authority = authority;
+    }
+
+    public String getAuthority() {
+        return authority;
+    }
 }

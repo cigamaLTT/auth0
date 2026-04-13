@@ -36,12 +36,12 @@ class RegistrationStreamListenerTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() throws Exception {
-        event = PendingRegistrationEvent.builder()
-                .email("test@example.com")
-                .username("testuser")
-                .registrationId("auth:lock:email:test@example.com")
-                .otpCode("123456")
-                .build();
+        event = new PendingRegistrationEvent(
+                "test@example.com",
+                "testuser",
+                "auth:lock:email:test@example.com",
+                "123456"
+        );
         message = mock(ObjectRecord.class);
         when(message.getValue()).thenReturn(eventJson);
         when(objectMapper.readValue(eventJson, PendingRegistrationEvent.class)).thenReturn(event);
@@ -53,7 +53,7 @@ class RegistrationStreamListenerTest {
         listener.onMessage(message);
 
         // Assert
-        verify(emailService).sendOtpEmail(event.getEmail(), event.getOtpCode());
+        verify(emailService).sendOtpEmail(event.email(), event.otpCode());
         verify(streamRedisTemplate, never()).delete(anyList());
     }
 

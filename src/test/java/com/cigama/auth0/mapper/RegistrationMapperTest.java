@@ -38,10 +38,10 @@ class RegistrationMapperTest {
 
         // Assert
         assertNotNull(pending);
-        assertEquals(request.getEmail(), pending.getEmail());
-        assertEquals(encodedPass, pending.getPassword());
-        assertEquals(otp, pending.getOtpCode());
-        assertEquals(clientId, pending.getClientId());
+        assertEquals(request.getEmail(), pending.email());
+        assertEquals(encodedPass, pending.password());
+        assertEquals(otp, pending.otpCode());
+        assertEquals(clientId, pending.clientId());
     }
 
     @Test
@@ -59,30 +59,34 @@ class RegistrationMapperTest {
 
         // Assert
         assertNotNull(event);
-        assertEquals(request.getEmail(), event.getEmail());
-        assertEquals(request.getUsername(), event.getUsername());
-        assertEquals(registrationId, event.getRegistrationId());
-        assertEquals(otp, event.getOtpCode());
+        assertEquals(event.email(), request.getEmail());
+        assertEquals(event.username(), request.getUsername());
+        assertEquals(event.otpCode(), otp);
+        assertEquals(event.registrationId(), registrationId);
     }
 
     @Test
     void pendingToUser_ShouldMapCorrectly() {
         // Arrange
-        PendingUserData pending = PendingUserData.builder()
-                .email("test@example.com")
-                .password("encoded")
-                .firstName("John")
-                .lastName("Doe")
-                .username("johndoe")
-                .build();
+        PendingUserData pending = new PendingUserData(
+                "johndoe",
+                "test@example.com",
+                "encoded",
+                "123456",
+                "John",
+                "Doe",
+                null,
+                null,
+                null
+        );
 
         // Act
         User user = registrationMapper.pendingToUser(pending);
 
         // Assert
         assertNotNull(user);
-        assertEquals(pending.getEmail(), user.getEmail());
-        assertEquals(pending.getPassword(), user.getPassword());
-        assertEquals(pending.getUsername(), user.getUsername());
+        assertEquals(pending.email(), user.getEmail());
+        assertEquals(pending.password(), user.getPassword());
+        assertEquals(pending.username(), user.getUsername());
     }
 }

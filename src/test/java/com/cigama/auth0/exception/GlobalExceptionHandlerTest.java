@@ -33,8 +33,8 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.NOT_FOUND, responseEntity.getStatusCode());
         assertNotNull(responseEntity.getBody());
-        assertEquals(404, responseEntity.getBody().getStatus());
-        assertEquals("User not found", responseEntity.getBody().getMessage());
+        assertEquals(404, responseEntity.getBody().status());
+        assertEquals("User not found", responseEntity.getBody().message());
     }
 
     @Test
@@ -51,8 +51,8 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, responseEntity.getStatusCode());
         assertNotNull(responseEntity.getBody());
-        assertEquals(400, responseEntity.getBody().getStatus());
-        assertEquals("Invalid Email format, Password is required", responseEntity.getBody().getMessage());
+        assertEquals(400, responseEntity.getBody().status());
+        assertEquals("Invalid Email format, Password is required", responseEntity.getBody().message());
     }
 
     @Test
@@ -63,7 +63,7 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, responseEntity.getStatusCode());
         assertNotNull(responseEntity.getBody());
-        assertEquals(500, responseEntity.getBody().getStatus());
-        assertEquals("Internal Server Error: Database connection timeout", responseEntity.getBody().getMessage());
+        assertEquals(500, responseEntity.getBody().status());
+        assertEquals("Internal Server Error: Database connection timeout", responseEntity.getBody().message());
     }
 }

@@ -6,8 +6,8 @@ import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.service.SessionService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,15 +16,20 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class SessionServiceImpl implements SessionService {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionServiceImpl.class);
 
     // --- Variables ---
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserMapper userMapper;
+
+    public SessionServiceImpl(RefreshTokenRepository refreshTokenRepository, UserMapper userMapper) {
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.userMapper = userMapper;
+    }
 
     // --- Methods ---
 

@@ -3,14 +3,10 @@ package com.cigama.auth0.dto.request;
 
 import com.cigama.auth0.validation.ConfigurableLength;
 import jakarta.validation.constraints.*;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.util.UUID;
 
 
-@Getter
-@Setter
 public class LoginRequest {
 
     ///  -- Credentials --
@@ -30,4 +26,35 @@ public class LoginRequest {
 
     private String deviceName;
 
+    public String getEmailOrUsername() {
+        return emailOrUsername;
+    }
+
+    public void setEmailOrUsername(String emailOrUsername) {
+        this.emailOrUsername = emailOrUsername;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public UUID getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(UUID deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
 }

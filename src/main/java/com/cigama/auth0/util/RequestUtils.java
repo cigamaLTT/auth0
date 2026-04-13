@@ -3,15 +3,15 @@ package com.cigama.auth0.util;
 import com.cigama.auth0.dto.request.ClientMetadata;
 import com.cigama.auth0.dto.request.LoginRequest;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.experimental.UtilityClass;
 
 import java.util.UUID;
 
 /**
  * Utility for extracting metadata from HttpServletRequest.
  */
-@UtilityClass
-public class RequestUtils {
+public final class RequestUtils {
+
+    private RequestUtils() {}
 
     /**
      * Extracts client metadata from the request and headers.
@@ -54,11 +54,11 @@ public class RequestUtils {
             deviceId = UUID.randomUUID();
         }
 
-        return ClientMetadata.builder()
-                .ipAddress(ip)
-                .userAgent(request.getHeader("User-Agent"))
-                .deviceId(deviceId)
-                .deviceName(deviceName)
-                .build();
+        return new ClientMetadata(
+                ip,
+                request.getHeader("User-Agent"),
+                deviceId,
+                deviceName
+        );
     }
 }

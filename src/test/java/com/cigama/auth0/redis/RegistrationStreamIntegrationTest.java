@@ -37,38 +37,44 @@ class RegistrationStreamIntegrationTest extends BaseRedisIntegrationTest {
 
     @Test
     void pendingUserData_WithLocalDate_ShouldSerializeAsIsoString() throws Exception {
-        PendingUserData data = PendingUserData.builder()
-                .email("test@example.com")
-                .username("testuser")
-                .password("hashed")
-                .firstName("Test")
-                .lastName("User")
-                .dateOfBirth(LocalDate.of(1995, 12, 12))
-                .otpCode("123456")
-                .build();
+        PendingUserData data = new PendingUserData(
+                "test@example.com",
+                null, 
+                "password", 
+                "First", 
+                "Last", 
+                "testuser", 
+                LocalDate.of(1990, 1, 1), 
+                "123456", 
+                null
+        );
 
         String json = objectMapper.writeValueAsString(data);
 
-        // Must be "1995-12-12" not [1995, 12, 12]
-        assertThat(json).contains("\"1995-12-12\"");
-        assertThat(json).doesNotContain("[1995");
+        // Must be "1990-01-01" not [1990, 1, 1]
+        assertThat(json).contains("\"1990-01-01\"");
+        assertThat(json).doesNotContain("[1990");
 
         // Must round-trip correctly
         PendingUserData deserialized = objectMapper.readValue(json, PendingUserData.class);
-        assertThat(deserialized.getDateOfBirth()).isEqualTo(LocalDate.of(1995, 12, 12));
+        assertThat(deserialized.dateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
     }
 
     // --- Lua Script + JSON Round-Trip Test ---
 
     @Test
     void luaScript_WhenPendingUserDataStored_ShouldDeserializeCorrectly() throws Exception {
-        PendingUserData original = PendingUserData.builder()
-                .email("test@example.com")
-                .username("testuser")
-                .password("hashed")
-                .otpCode("654321")
-                .dateOfBirth(LocalDate.of(1990, 5, 20))
-                .build();
+        PendingUserData original = new PendingUserData(
+                "test@example.com", 
+                null, 
+                "password", 
+                "First", 
+                "Last", 
+                "testuser", 
+                LocalDate.of(1990, 1, 1), 
+                "123456", 
+                null
+        );
 
         String payload = objectMapper.writeValueAsString(original);
 
@@ -83,21 +89,21 @@ class RegistrationStreamIntegrationTest extends BaseRedisIntegrationTest {
         assertThat(stored).isNotNull();
 
         PendingUserData recovered = objectMapper.readValue(stored.toString(), PendingUserData.class);
-        assertThat(recovered.getEmail()).isEqualTo("test@example.com");
-        assertThat(recovered.getOtpCode()).isEqualTo("654321");
-        assertThat(recovered.getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 20));
+        assertThat(recovered.email()).isEqualTo("test@example.com");
+        assertThat(recovered.otpCode()).isEqualTo("123456");
+        assertThat(recovered.dateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
     }
 
     // --- Stream Publish/Consume Tests ---
 
     @Test
     void streamAdd_ShouldPublishEventToStream() throws Exception {
-        PendingRegistrationEvent event = PendingRegistrationEvent.builder()
-                .email("test@example.com")
-                .username("testuser")
-                .registrationId(EMAIL_KEY)
-                .otpCode("111222")
-                .build();
+        PendingRegistrationEvent event = new PendingRegistrationEvent(
+                "test@example.com",
+                "testuser",
+                "auth:lock:email:test@example.com",
+                "111222"
+        );
 
         String eventJson = objectMapper.writeValueAsString(event);
 
@@ -115,19 +121,19 @@ class RegistrationStreamIntegrationTest extends BaseRedisIntegrationTest {
 
         assertThat(messages).hasSize(1);
         PendingRegistrationEvent recovered = objectMapper.readValue(messages.get(0).getValue(), PendingRegistrationEvent.class);
-        assertThat(recovered.getEmail()).isEqualTo("test@example.com");
-        assertThat(recovered.getOtpCode()).isEqualTo("111222");
+        assertThat(recovered.email()).isEqualTo("test@example.com");
+        assertThat(recovered.otpCode()).isEqualTo("111222");
     }
 
     @Test
     void streamAdd_MultipleEvents_ShouldMaintainOrder() throws Exception {
         for (int i = 1; i <= 3; i++) {
-            PendingRegistrationEvent event = PendingRegistrationEvent.builder()
-                    .email("user" + i + "@example.com")
-                    .username("user" + i)
-                    .registrationId("auth:lock:email:user" + i)
-                    .otpCode("00000" + i)
-                    .build();
+            PendingRegistrationEvent event = new PendingRegistrationEvent(
+                    "user" + i + "@example.com",
+                    "user" + i,
+                    "00000" + i,
+                    "auth:lock:email:user" + i
+            );
             
             String eventJson = objectMapper.writeValueAsString(event);
             
@@ -145,7 +151,7 @@ class RegistrationStreamIntegrationTest extends BaseRedisIntegrationTest {
         assertThat(messages).hasSize(3);
         PendingRegistrationEvent first = objectMapper.readValue(messages.get(0).getValue(), PendingRegistrationEvent.class);
         PendingRegistrationEvent last = objectMapper.readValue(messages.get(2).getValue(), PendingRegistrationEvent.class);
-        assertThat(first.getEmail()).isEqualTo("user1@example.com");
-        assertThat(last.getEmail()).isEqualTo("user3@example.com");
+        assertThat(first.email()).isEqualTo("user1@example.com");
+        assertThat(last.email()).isEqualTo("user3@example.com");
     }
 }

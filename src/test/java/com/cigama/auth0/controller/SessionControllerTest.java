@@ -57,12 +57,15 @@ class SessionControllerTest {
 
     @Test
     void getSessions_ReturnsList() throws Exception {
-        SessionResponse session = SessionResponse.builder()
-                .deviceId(UUID.randomUUID())
-                .deviceName("Test Device")
-                .ipAddress("127.0.0.1")
-                .createdAt(LocalDateTime.now())
-                .build();
+        SessionResponse session = new SessionResponse(
+                UUID.randomUUID(),
+                "Test Device",
+                "127.0.0.1",
+                "Test Agent",
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                true
+        );
 
         when(sessionService.getSessions(userId)).thenReturn(List.of(session));
 

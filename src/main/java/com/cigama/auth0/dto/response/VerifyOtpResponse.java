@@ -1,14 +1,6 @@
 package com.cigama.auth0.dto.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class VerifyOtpResponse {
-    private String resetToken;
-}
+public record VerifyOtpResponse(
+    String resetToken
+) {}
