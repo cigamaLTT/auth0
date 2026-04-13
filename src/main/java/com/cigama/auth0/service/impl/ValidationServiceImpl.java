@@ -23,6 +23,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -129,5 +130,10 @@ public class ValidationServiceImpl implements ValidationService {
         } catch (NoSuchAlgorithmException e) {
             throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "SHA-256 algorithm not found");
         }
+    }
+
+    @Override
+    public Optional<User> validateUserExistsByEmail(String email) {
+        return userRepository.findByEmail(email);
     }
 }

@@ -36,6 +36,9 @@ public class JwtTokenProvider {
     @Value("${jwt.expiration}")
     private long jwtExpiration;
 
+    @Value("${jwt.password-reset-expiration}")
+    private long passwordResetExpiration;
+
     private final ObjectMapper objectMapper;
 
     private PrivateKey privateKey;
@@ -78,6 +81,23 @@ public class JwtTokenProvider {
         }
 
         return builder.compact();
+    }
+
+    /**
+     * Issues a short-lived JWT for the password-reset flow.
+     * Uses email as subject and adds a purpose claim to distinguish it from access tokens.
+     */
+    public String generatePasswordResetToken(String email) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + passwordResetExpiration);
+
+        return Jwts.builder()
+                .claim("purpose", "PASSWORD_RESET")
+                .subject(email)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(privateKey)
+                .compact();
     }
 
     public Claims extractAllClaims(String token) {

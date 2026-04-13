@@ -1,10 +1,13 @@
 package com.cigama.auth0.controller;
 
+import com.cigama.auth0.dto.request.ForgotPasswordRequest;
 import com.cigama.auth0.dto.request.LoginRequest;
 import com.cigama.auth0.dto.request.RefreshTokenRequest;
 import com.cigama.auth0.dto.request.RegisterRequest;
+import com.cigama.auth0.dto.request.ResetPasswordRequest;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
+import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 
 
 @RestController
@@ -44,9 +48,9 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email to complete registration.")
+    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email. For REGISTER: completes registration. For FORGOT_PASSWORD: returns a password-reset token.")
     @PostMapping("/verify-otp")
-    public ResponseEntity<BaseResponse<Void>> verifyOtp(
+    public ResponseEntity<?> verifyOtp(
             @Valid @RequestBody com.cigama.auth0.dto.request.VerifyOtpRequest request
     ) {
         if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.REGISTER) {
@@ -55,6 +59,16 @@ public class AuthController {
                     BaseResponse.<Void>builder()
                             .status(HttpStatus.OK.value())
                             .message("OTP verified successfully. Please proceed to login.")
+                            .build()
+            );
+        }
+        if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.FORGOT_PASSWORD) {
+            VerifyOtpResponse result = authService.verifyOtpForPasswordReset(request.getEmail(), request.getOtpCode());
+            return ResponseEntity.ok(
+                    BaseResponse.<VerifyOtpResponse>builder()
+                            .status(HttpStatus.OK.value())
+                            .message("OTP verified. Use the reset token to set your new password.")
+                            .data(result)
                             .build()
             );
         }
@@ -110,6 +124,38 @@ public class AuthController {
                 BaseResponse.<Void>builder()
                         .status(HttpStatus.OK.value())
                         .message("Logged out successfully")
+                        .build()
+        );
+    }
+
+    // --- Password Reset ---
+
+    @Operation(summary = "Forgot Password", description = "Sends a password-reset OTP to the given email address if it is registered.")
+    @PostMapping("/forgot-password")
+    public ResponseEntity<BaseResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        authService.forgotPassword(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.ACCEPTED.value())
+                        .message("If this email is registered, you will receive a password reset OTP.")
+                        .build()
+        );
+    }
+
+    @Operation(summary = "Reset Password", description = "Resets the user's password using the password-reset token obtained from OTP verification.")
+    @PostMapping("/reset-password")
+    public ResponseEntity<BaseResponse<Void>> resetPassword(
+            @RequestHeader("Authorization") String bearerToken,
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        String resetToken = bearerToken.substring(7);
+        authService.resetPassword(resetToken, request);
+        return ResponseEntity.ok(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Password reset successfully. Please log in again.")
                         .build()
         );
     }

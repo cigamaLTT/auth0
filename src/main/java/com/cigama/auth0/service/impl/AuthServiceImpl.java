@@ -1,13 +1,20 @@
 package com.cigama.auth0.service.impl;
 
 import com.cigama.auth0.dto.JwtPayload;
+import com.cigama.auth0.dto.cache.PendingPasswordResetData;
+import com.cigama.auth0.dto.cache.PendingUserData;
+import com.cigama.auth0.dto.request.ForgotPasswordRequest;
 import com.cigama.auth0.dto.request.LoginRequest;
 import com.cigama.auth0.dto.request.RegisterRequest;
+import com.cigama.auth0.dto.request.ResetPasswordRequest;
 import com.cigama.auth0.dto.response.TokenResponse;
+import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.entity.ClientApp;
 import com.cigama.auth0.entity.RefreshToken;
 import com.cigama.auth0.entity.Role;
 import com.cigama.auth0.entity.User;
+import com.cigama.auth0.exception.CustomException;
+import com.cigama.auth0.mapper.PasswordResetMapper;
 import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.mapper.RegistrationMapper;
 import com.cigama.auth0.repository.RefreshTokenRepository;
@@ -21,6 +28,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +66,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
     private final RegistrationMapper registrationMapper;
+    private final PasswordResetMapper passwordResetMapper;
     private final ClientAppRepository clientAppRepository;
     private final TokenBlacklistService tokenBlacklistService;
     private final RedisTemplate<String, Object> streamRedisTemplate;
@@ -77,6 +86,15 @@ public class AuthServiceImpl implements AuthService {
 
     @Value("${app.registration.lock-prefix-username}")
     private String usernameLockPrefix;
+
+    @Value("${app.password-reset.otp-expiration}")
+    private int passwordResetOtpExpiration;
+
+    @Value("${app.password-reset.stream-key}")
+    private String passwordResetStreamKey;
+
+    @Value("${app.password-reset.lock-prefix-email}")
+    private String passwordResetEmailLockPrefix;
 
     // --- Public Methods ---
 
@@ -237,7 +255,136 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    // --- Password Reset ---
+
+    /**
+     * Initiates a password reset by generating an OTP, caching it in Redis, and publishing
+     * a ForgotPasswordEvent to the stream for async email delivery.
+     * Always returns successfully regardless of whether the email exists.
+     */
+    @Override
+    public void forgotPassword(ForgotPasswordRequest request) {
+        if (validationService.validateUserExistsByEmail(request.getEmail()).isEmpty()) {
+            return;
+        }
+
+        String otp = String.format("%06d", new SecureRandom().nextInt(999999));
+        String lockKey = passwordResetEmailLockPrefix + request.getEmail();
+
+        PendingPasswordResetData pendingData = PendingPasswordResetData.builder()
+                .email(request.getEmail())
+                .otpCode(otp)
+                .build();
+
+        String payloadJson;
+        try {
+            payloadJson = objectMapper.writeValueAsString(pendingData);
+        } catch (Exception e) {
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize password reset data");
+        }
+
+        Long result = streamRedisTemplate.execute(
+                new DefaultRedisScript<>(RedisLuaScripts.SET_PENDING_RESET_OTP, Long.class),
+                List.of(lockKey),
+                payloadJson,
+                String.valueOf(passwordResetOtpExpiration)
+        );
+
+        if (result == null || result == 0) {
+            return;
+        }
+
+        com.cigama.auth0.event.dto.ForgotPasswordEvent event = passwordResetMapper.toForgotPasswordEvent(request, lockKey, otp);
+
+        try {
+            String eventJson = objectMapper.writeValueAsString(event);
+            streamRedisTemplate.opsForStream().add(
+                    StreamRecords.newRecord()
+                            .in(passwordResetStreamKey)
+                            .ofObject(eventJson)
+                            .withId(RecordId.autoGenerate())
+            );
+        } catch (Exception e) {
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to publish password reset event");
+        }
+    }
+
+    /**
+     * Validates a password-reset OTP, deletes the Redis lock for single-use enforcement,
+     * and returns a short-lived password-reset JWT.
+     */
+    @Override
+    public VerifyOtpResponse verifyOtpForPasswordReset(String email, String otpCode) {
+        String lockKey = passwordResetEmailLockPrefix + email;
+        Object payloadObj = streamRedisTemplate.opsForValue().get(lockKey);
+
+        if (payloadObj == null) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "OTP expired or not found");
+        }
+
+        PendingPasswordResetData pendingData;
+        try {
+            pendingData = objectMapper.readValue(payloadObj.toString(), PendingPasswordResetData.class);
+        } catch (Exception e) {
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to parse cached reset data");
+        }
+
+        if (!pendingData.getOtpCode().equals(otpCode)) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
+        }
+
+        streamRedisTemplate.delete(lockKey);
+
+        String resetToken = jwtTokenProvider.generatePasswordResetToken(email);
+        return VerifyOtpResponse.builder().resetToken(resetToken).build();
+    }
+
+    /**
+     * Validates the password-reset JWT, updates the user's password, blacklists the token
+     * to enforce single-use, and revokes all existing refresh tokens for the user.
+     */
+    @Override
+    @Transactional
+    public void resetPassword(String resetToken, ResetPasswordRequest request) {
+        if (tokenBlacklistService.isBlacklisted(resetToken)) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Token already used or revoked");
+        }
+
+        Claims claims;
+        try {
+            claims = jwtTokenProvider.extractAllClaims(resetToken);
+        } catch (ExpiredJwtException e) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Password reset token has expired");
+        } catch (Exception e) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Invalid password reset token");
+        }
+
+        String purpose = (String) claims.get("purpose");
+        if (!"PASSWORD_RESET".equals(purpose)) {
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "Invalid token type");
+        }
+
+        String email = claims.getSubject();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Passwords do not match");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        userRepository.save(user);
+
+        long remainingTtl = claims.getExpiration().getTime() - System.currentTimeMillis();
+        if (remainingTtl > 0) {
+            tokenBlacklistService.blacklistToken(resetToken, remainingTtl);
+        }
+
+        refreshTokenRepository.deleteByUserId(user.getUserId());
+    }
+
     // --- Private Helpers ---
+
 
     private TokenResponse generateTokenResponse(User user, ClientApp clientApp) {
         String clientIdStr = clientApp != null ? clientApp.getClientId().toString() : null;
