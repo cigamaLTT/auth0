@@ -3,7 +3,6 @@ package com.cigama.auth0.config;
 import com.cigama.auth0.security.JwtAuthenticationEntryPoint;
 import com.cigama.auth0.security.JwtAuthenticationFilter;
 import com.cigama.auth0.security.LocalOnlyFilter;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,7 +21,6 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
 
     // --- Variables ---
@@ -30,6 +28,14 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final LocalOnlyFilter localOnlyFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
+                          LocalOnlyFilter localOnlyFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
+        this.localOnlyFilter = localOnlyFilter;
+    }
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;

@@ -10,8 +10,8 @@ import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.service.ValidationService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,10 +25,10 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.Optional;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class ValidationServiceImpl implements ValidationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ValidationServiceImpl.class);
 
     // --- Variables ---
 
@@ -36,6 +36,16 @@ public class ValidationServiceImpl implements ValidationService {
     private final ClientAppRepository clientAppRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+
+    public ValidationServiceImpl(UserRepository userRepository,
+                                 ClientAppRepository clientAppRepository,
+                                 RefreshTokenRepository refreshTokenRepository,
+                                 PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.clientAppRepository = clientAppRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Value("${jwt.refresh-grace-period}")
     private int refreshGracePeriodSeconds;

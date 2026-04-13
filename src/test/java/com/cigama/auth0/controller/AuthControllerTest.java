@@ -47,9 +47,6 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        // Jackson 3 doesn't have findAndRegisterModules() at the top level 
-        // in the same way, but Spring Boot's Jackson auto-config handles this.
-        // For a manual instance, we use the new builder API or just the default.
         registerRequest = new RegisterRequest();
         registerRequest.setEmail("test@example.com");
         registerRequest.setUsername("testuser");
@@ -81,12 +78,7 @@ class AuthControllerTest {
         loginRequest.setEmailOrUsername("testuser");
         loginRequest.setPassword("Password123");
 
-        TokenResponse tokenResponse = TokenResponse.builder()
-                .accessToken("access-token")
-                .refreshToken("refresh-token")
-                .tokenType("Bearer")
-                .expiredIn(3600L)
-                .build();
+        TokenResponse tokenResponse = new TokenResponse("access-token", "refresh-token", "Bearer", 3600L);
 
         when(authService.login(any(LoginRequest.class), eq(apiKey), any(ClientMetadata.class)))
                 .thenReturn(tokenResponse);
@@ -105,12 +97,7 @@ class AuthControllerTest {
         Map<String, String> refreshRequest = new HashMap<>();
         refreshRequest.put("refreshToken", "valid-refresh-token");
 
-        TokenResponse tokenResponse = TokenResponse.builder()
-                .accessToken("new-access-token")
-                .refreshToken("new-refresh-token")
-                .tokenType("Bearer")
-                .expiredIn(3600L)
-                .build();
+        TokenResponse tokenResponse = new TokenResponse("new-access-token", "new-refresh-token", "Bearer", 3600L);
 
         when(authService.refresh(eq("valid-refresh-token"), any(ClientMetadata.class)))
                 .thenReturn(tokenResponse);

@@ -1,8 +1,5 @@
 package com.cigama.auth0.dto.userdetails;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -10,9 +7,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
 import java.util.List;
 
-@Getter
-@Builder
-@AllArgsConstructor
 public class CustomUserDetails implements UserDetails {
 
     // --- Fields ---
@@ -23,6 +17,27 @@ public class CustomUserDetails implements UserDetails {
     private boolean enabled;
     private String role;
     private String clientId;
+
+    public CustomUserDetails(String userId, String username, String password, boolean enabled, String role, String clientId) {
+        this.userId = userId;
+        this.username = username;
+        this.password = password;
+        this.enabled = enabled;
+        this.role = role;
+        this.clientId = clientId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public String getRole() {
+        return role;
+    }
 
     // --- UserDetails Interface ---
 
@@ -64,5 +79,52 @@ public class CustomUserDetails implements UserDetails {
     @Override
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public static CustomUserDetailsBuilder builder() {
+        return new CustomUserDetailsBuilder();
+    }
+
+    public static class CustomUserDetailsBuilder {
+        private String userId;
+        private String username;
+        private String password;
+        private boolean enabled;
+        private String role;
+        private String clientId;
+
+        public CustomUserDetailsBuilder userId(String userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public CustomUserDetailsBuilder username(String username) {
+            this.username = username;
+            return this;
+        }
+
+        public CustomUserDetailsBuilder password(String password) {
+            this.password = password;
+            return this;
+        }
+
+        public CustomUserDetailsBuilder enabled(boolean enabled) {
+            this.enabled = enabled;
+            return this;
+        }
+
+        public CustomUserDetailsBuilder role(String role) {
+            this.role = role;
+            return this;
+        }
+
+        public CustomUserDetailsBuilder clientId(String clientId) {
+            this.clientId = clientId;
+            return this;
+        }
+
+        public CustomUserDetails build() {
+            return new CustomUserDetails(userId, username, password, enabled, role, clientId);
+        }
     }
 }

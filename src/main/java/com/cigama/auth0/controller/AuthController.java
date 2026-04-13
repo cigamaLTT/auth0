@@ -9,7 +9,6 @@ import com.cigama.auth0.service.AuthService;
 import com.cigama.auth0.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,12 +16,15 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
-@RequiredArgsConstructor
 public class AuthController implements AuthApi {
 
     // --- Variables ---
 
     private final AuthService authService;
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
 
     // --- Public Endpoints ---
 
@@ -35,10 +37,7 @@ public class AuthController implements AuthApi {
     ) {
         authService.register(request, apiKey);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.ACCEPTED.value())
-                        .message("Registration initialized. Please verify your OTP.")
-                        .build()
+                new BaseResponse<>(HttpStatus.ACCEPTED.value(), "Registration initialized. Please verify your OTP.", null)
         );
     }
 
@@ -50,27 +49,17 @@ public class AuthController implements AuthApi {
         if (request.getPurpose() == OtpPurpose.REGISTER) {
             authService.verifyOtp(request.getEmail(), request.getOtpCode());
             return ResponseEntity.ok(
-                    BaseResponse.<Void>builder()
-                            .status(HttpStatus.OK.value())
-                            .message("OTP verified successfully. Please proceed to login.")
-                            .build()
+                    new BaseResponse<>(HttpStatus.OK.value(), "OTP verified successfully. Please proceed to login.", null)
             );
         }
         if (request.getPurpose() == OtpPurpose.FORGOT_PASSWORD) {
             VerifyOtpResponse result = authService.verifyOtpForPasswordReset(request.getEmail(), request.getOtpCode());
             return ResponseEntity.ok(
-                    BaseResponse.<VerifyOtpResponse>builder()
-                            .status(HttpStatus.OK.value())
-                            .message("OTP verified. Use the reset token to set your new password.")
-                            .data(result)
-                            .build()
+                    new BaseResponse<>(HttpStatus.OK.value(), "OTP verified. Use the reset token to set your new password.", result)
             );
         }
         return ResponseEntity.badRequest().body(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.BAD_REQUEST.value())
-                        .message("Unsupported OTP purpose")
-                        .build()
+                new BaseResponse<>(HttpStatus.BAD_REQUEST.value(), "Unsupported OTP purpose", null)
         );
     }
 
@@ -84,11 +73,7 @@ public class AuthController implements AuthApi {
         ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, request);
         TokenResponse response = authService.login(request, apiKey, metadata);
         return ResponseEntity.ok(
-                BaseResponse.<TokenResponse>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Login successful")
-                        .data(response)
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Login successful", response)
         );
     }
 
@@ -101,11 +86,7 @@ public class AuthController implements AuthApi {
         ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, null);
         TokenResponse response = authService.refresh(request.getRefreshToken(), metadata);
         return ResponseEntity.ok(
-                BaseResponse.<TokenResponse>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Token refreshed successfully")
-                        .data(response)
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Token refreshed successfully", response)
         );
     }
 
@@ -118,10 +99,7 @@ public class AuthController implements AuthApi {
         String accessToken = bearerToken.substring(7);
         authService.logout(accessToken, request.getRefreshToken());
         return ResponseEntity.ok(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Logged out successfully")
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Logged out successfully", null)
         );
     }
 
@@ -134,10 +112,7 @@ public class AuthController implements AuthApi {
     ) {
         authService.forgotPassword(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.ACCEPTED.value())
-                        .message("If this email is registered, you will receive a password reset OTP.")
-                        .build()
+                new BaseResponse<>(HttpStatus.ACCEPTED.value(), "If this email is registered, you will receive a password reset OTP.", null)
         );
     }
 
@@ -150,10 +125,7 @@ public class AuthController implements AuthApi {
         String resetToken = bearerToken.substring(7);
         authService.resetPassword(resetToken, request);
         return ResponseEntity.ok(
-                BaseResponse.<Void>builder()
-                        .status(HttpStatus.OK.value())
-                        .message("Password reset successfully. Please log in again.")
-                        .build()
+                new BaseResponse<>(HttpStatus.OK.value(), "Password reset successfully. Please log in again.", null)
         );
     }
 }

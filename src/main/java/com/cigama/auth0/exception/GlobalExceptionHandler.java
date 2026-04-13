@@ -21,10 +21,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<BaseResponse<Void>> handleCustomException(CustomException ex) {
-        BaseResponse<Void> response = BaseResponse.<Void>builder()
-                .status(ex.getStatus().value())
-                .message(ex.getMessage())
-                .build();
+        BaseResponse<Void> response = new BaseResponse<>(ex.getStatus().value(), ex.getMessage(), null);
         return new ResponseEntity<>(response, ex.getStatus());
     }
 
@@ -37,10 +34,7 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
 
-        BaseResponse<Void> response = BaseResponse.<Void>builder()
-                .status(HttpStatus.BAD_REQUEST.value())
-                .message(errorMessage)
-                .build();
+        BaseResponse<Void> response = new BaseResponse<>(HttpStatus.BAD_REQUEST.value(), errorMessage, null);
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
@@ -49,10 +43,8 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<BaseResponse<Void>> handleGeneralException(Exception ex) {
-        BaseResponse<Void> response = BaseResponse.<Void>builder()
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .message("Internal Server Error")
-                .build();
+        String message = "Internal Server Error" + (ex.getMessage() != null ? ": " + ex.getMessage() : "");
+        BaseResponse<Void> response = new BaseResponse<>(HttpStatus.INTERNAL_SERVER_ERROR.value(), message, null);
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

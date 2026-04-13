@@ -1,13 +1,12 @@
 package com.cigama.auth0.util;
 
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
 
 /**
  * Registry for Redis Lua Scripts to ensure atomicity for complex operations.
  */
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class RedisLuaScripts {
+
+    private RedisLuaScripts() {}
 
     // --- Scripts ---
 

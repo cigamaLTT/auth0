@@ -5,7 +5,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -15,11 +14,13 @@ import java.io.IOException;
  * Filter to apply rate limiting before reaching the Controller layer.
  */
 @Component
-
-@RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
+
+    public RateLimitFilter(RateLimitService rateLimitService) {
+        this.rateLimitService = rateLimitService;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

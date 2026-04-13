@@ -26,7 +26,6 @@ import com.cigama.auth0.service.ValidationService;
 import com.cigama.auth0.util.RedisLuaScripts;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
@@ -50,7 +49,6 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     // --- Variables ---
@@ -67,6 +65,32 @@ public class AuthServiceImpl implements AuthService {
     private final TokenBlacklistService tokenBlacklistService;
     private final RedisTemplate<String, Object> streamRedisTemplate;
     private final ObjectMapper objectMapper;
+
+    public AuthServiceImpl(UserRepository userRepository,
+                           RefreshTokenRepository refreshTokenRepository,
+                           ValidationService validationService,
+                           PasswordEncoder passwordEncoder,
+                           JwtTokenProvider jwtTokenProvider,
+                           UserMapper userMapper,
+                           RegistrationMapper registrationMapper,
+                           PasswordResetMapper passwordResetMapper,
+                           ClientAppRepository clientAppRepository,
+                           TokenBlacklistService tokenBlacklistService,
+                           RedisTemplate<String, Object> streamRedisTemplate,
+                           ObjectMapper objectMapper) {
+        this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.validationService = validationService;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.userMapper = userMapper;
+        this.registrationMapper = registrationMapper;
+        this.passwordResetMapper = passwordResetMapper;
+        this.clientAppRepository = clientAppRepository;
+        this.tokenBlacklistService = tokenBlacklistService;
+        this.streamRedisTemplate = streamRedisTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -164,7 +188,7 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to parse cached user data");
         }
         
-        if (!pendingData.getOtpCode().equals(otpCode)) {
+        if (!pendingData.otpCode().equals(otpCode)) {
             throw new CustomException(HttpStatus.BAD_REQUEST, "Invalid OTP code.");
         }
         
@@ -172,8 +196,8 @@ public class AuthServiceImpl implements AuthService {
         user.setRole(Role.UNAUTHORIZED_USER);
         user.setIsAuthorized(true);
         
-        if (pendingData.getClientId() != null) {
-            ClientApp clientApp = clientAppRepository.findById(UUID.fromString(pendingData.getClientId())).orElse(null);
+        if (pendingData.clientId() != null) {
+            ClientApp clientApp = clientAppRepository.findById(UUID.fromString(pendingData.clientId())).orElse(null);
             if (clientApp != null) {
                 if (user.getClientApps() == null) {
                     user.setClientApps(new HashSet<>());
@@ -184,7 +208,7 @@ public class AuthServiceImpl implements AuthService {
         
         userRepository.save(user);
 
-        streamRedisTemplate.delete(List.of(emailLockKey, usernameLockPrefix + pendingData.getUsername()));
+        streamRedisTemplate.delete(List.of(emailLockKey, usernameLockPrefix + pendingData.username()));
     }
 
     /**
@@ -277,10 +301,7 @@ public class AuthServiceImpl implements AuthService {
         String otp = String.format("%06d", new SecureRandom().nextInt(999999));
         String lockKey = passwordResetEmailLockPrefix + request.getEmail();
 
-        PendingPasswordResetData pendingData = PendingPasswordResetData.builder()
-                .email(request.getEmail())
-                .otpCode(otp)
-                .build();
+        PendingPasswordResetData pendingData = new PendingPasswordResetData(request.getEmail(), otp);
 
         String payloadJson;
         try {
@@ -335,14 +356,14 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to parse cached reset data");
         }
 
-        if (!pendingData.getOtpCode().equals(otpCode)) {
+        if (!pendingData.otpCode().equals(otpCode)) {
             throw new CustomException(HttpStatus.BAD_REQUEST, "Invalid OTP code");
         }
 
         streamRedisTemplate.delete(lockKey);
 
         String resetToken = jwtTokenProvider.generatePasswordResetToken(email);
-        return VerifyOtpResponse.builder().resetToken(resetToken).build();
+        return new VerifyOtpResponse(resetToken);
     }
 
     /**
@@ -420,12 +441,12 @@ public class AuthServiceImpl implements AuthService {
 
         refreshTokenRepository.save(refreshTokenEntity);
 
-        return TokenResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshTokenRaw)
-                .tokenType("Bearer")
-                .expiredIn(refreshExpiration)
-                .build();
+        return new TokenResponse(
+                accessToken,
+                refreshTokenRaw,
+                "Bearer",
+                refreshExpiration
+        );
     }
 
     private String generateSecureToken() {

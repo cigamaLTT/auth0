@@ -7,7 +7,6 @@ import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -23,7 +22,6 @@ import java.util.Date;
 import java.util.Map;
 
 @Component
-@RequiredArgsConstructor
 public class JwtTokenProvider {
 
     // --- Variables ---
@@ -44,6 +42,10 @@ public class JwtTokenProvider {
 
     private PrivateKey privateKey;
     private PublicKey publicKey;
+
+    public JwtTokenProvider(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @PostConstruct
     public void init() {
