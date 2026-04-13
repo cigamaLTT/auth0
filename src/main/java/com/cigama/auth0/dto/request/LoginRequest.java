@@ -6,6 +6,8 @@ import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 
 @Getter
 @Setter
@@ -23,5 +25,9 @@ public class LoginRequest {
             message = "Password must contain at least 1 uppercase letter"
     )
     private String password;
+
+    private UUID deviceId;
+
+    private String deviceName;
 
 }

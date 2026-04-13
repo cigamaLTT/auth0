@@ -1,17 +1,18 @@
 package com.cigama.auth0.security;
 
 import com.cigama.auth0.dto.JwtPayload;
-import io.jsonwebtoken.JwtBuilder;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import com.cigama.auth0.exception.CustomException;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.io.Decoders;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -36,20 +37,27 @@ public class JwtTokenProvider {
     @Value("${jwt.expiration}")
     private long jwtExpiration;
 
+    @Value("${jwt.password-reset-expiration}")
+    private long passwordResetExpiration;
+
     private final ObjectMapper objectMapper;
 
     private PrivateKey privateKey;
     private PublicKey publicKey;
 
     @PostConstruct
-    public void init() throws Exception {
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+    public void init() {
+        try {
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
 
-        byte[] privateKeyBytes = Decoders.BASE64.decode(privateKeyString);
-        this.privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+            byte[] privateKeyBytes = Decoders.BASE64.decode(privateKeyString);
+            this.privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
 
-        byte[] publicKeyBytes = Decoders.BASE64.decode(publicKeyString);
-        this.publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+            byte[] publicKeyBytes = Decoders.BASE64.decode(publicKeyString);
+            this.publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+        } catch (Exception e) {
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to initialize cryptographic keys: " + e.getMessage());
+        }
     }
 
     // --- Core Methods ---
@@ -78,6 +86,23 @@ public class JwtTokenProvider {
         }
 
         return builder.compact();
+    }
+
+    /**
+     * Issues a short-lived JWT for the password-reset flow.
+     * Uses email as subject and adds a purpose claim to distinguish it from access tokens.
+     */
+    public String generatePasswordResetToken(String email) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + passwordResetExpiration);
+
+        return Jwts.builder()
+                .claim("purpose", "PASSWORD_RESET")
+                .subject(email)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(privateKey)
+                .compact();
     }
 
     public Claims extractAllClaims(String token) {

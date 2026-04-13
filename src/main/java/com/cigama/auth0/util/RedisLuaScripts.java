@@ -9,11 +9,19 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class RedisLuaScripts {
 
+    // --- Scripts ---
+
     /**
-     * Script to atomically check if email/username exists in pending cache or DB,
-     * and set the pending registration if available.
-     * Prevents race conditions during simultaneous registrations.
+     * Atomically sets the password-reset OTP lock for a single email key.
+     * Returns 1 on success, 0 if the key already exists (active OTP).
      */
+    public static final String SET_PENDING_RESET_OTP = """
+        -- KEYS[1]: email_lock_key
+        -- ARGV[1]: payload_json, ARGV[2]: ttl_seconds
+        local set = redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2])
+        if set then return 1 else return 0 end
+        """;
+
     public static final String SET_PENDING_USER = """
         -- KEYS[1]: email_lock_key, KEYS[2]: username_lock_key
         -- ARGV[1]: payload_json, ARGV[2]: ttl_seconds

@@ -30,4 +30,22 @@ public class EmailServiceImpl implements EmailService {
             throw new RuntimeException("Email delivery failed", e);
         }
     }
+
+    @Override
+    public void sendPasswordResetEmail(String toEmail, String otpCode) {
+        log.info("Preparing to send password reset email to {}", toEmail);
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(toEmail);
+            message.setSubject("Reset Your Auth0 Password");
+            message.setText("Your password reset code is: " + otpCode + "\n\nThis code will expire in 10 minutes.\nIf you did not request this, please ignore this email.");
+
+            emailSender.send(message);
+            log.info("Password reset email successfully sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send password reset email to {}: {}", toEmail, e.getMessage());
+            throw new RuntimeException("Email delivery failed", e);
+        }
+    }
 }
+

@@ -1,11 +1,12 @@
 package com.cigama.auth0.controller;
 
-import com.cigama.auth0.dto.request.LoginRequest;
-import com.cigama.auth0.dto.request.RefreshTokenRequest;
-import com.cigama.auth0.dto.request.RegisterRequest;
+import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
+import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.service.AuthService;
+import com.cigama.auth0.util.RequestUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -44,17 +45,27 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email to complete registration.")
+    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email. For REGISTER: completes registration. For FORGOT_PASSWORD: returns a password-reset token.")
     @PostMapping("/verify-otp")
-    public ResponseEntity<BaseResponse<Void>> verifyOtp(
-            @Valid @RequestBody com.cigama.auth0.dto.request.VerifyOtpRequest request
+    public ResponseEntity<BaseResponse<?>> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request
     ) {
-        if (request.getPurpose() == com.cigama.auth0.dto.request.OtpPurpose.REGISTER) {
+        if (request.getPurpose() == OtpPurpose.REGISTER) {
             authService.verifyOtp(request.getEmail(), request.getOtpCode());
             return ResponseEntity.ok(
                     BaseResponse.<Void>builder()
                             .status(HttpStatus.OK.value())
                             .message("OTP verified successfully. Please proceed to login.")
+                            .build()
+            );
+        }
+        if (request.getPurpose() == OtpPurpose.FORGOT_PASSWORD) {
+            VerifyOtpResponse result = authService.verifyOtpForPasswordReset(request.getEmail(), request.getOtpCode());
+            return ResponseEntity.ok(
+                    BaseResponse.<VerifyOtpResponse>builder()
+                            .status(HttpStatus.OK.value())
+                            .message("OTP verified. Use the reset token to set your new password.")
+                            .data(result)
                             .build()
             );
         }
@@ -70,9 +81,11 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<BaseResponse<TokenResponse>> login(
             @Valid @RequestBody LoginRequest request,
-            @RequestHeader(value = "X-API-Key", required = false) String apiKey
+            @RequestHeader(value = "X-API-Key", required = false) String apiKey,
+            HttpServletRequest servletRequest
     ) {
-        TokenResponse response = authService.login(request, apiKey);
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, request);
+        TokenResponse response = authService.login(request, apiKey, metadata);
         return ResponseEntity.ok(
                 BaseResponse.<TokenResponse>builder()
                         .status(HttpStatus.OK.value())
@@ -85,9 +98,11 @@ public class AuthController {
     @Operation(summary = "Refresh Token", description = "Generates a new access token using a valid refresh token.")
     @PostMapping("/refresh")
     public ResponseEntity<BaseResponse<TokenResponse>> refresh(
-            @Valid @RequestBody RefreshTokenRequest request
+            @Valid @RequestBody RefreshTokenRequest request,
+            HttpServletRequest servletRequest
     ) {
-        TokenResponse response = authService.refresh(request.getRefreshToken());
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, null);
+        TokenResponse response = authService.refresh(request.getRefreshToken(), metadata);
         return ResponseEntity.ok(
                 BaseResponse.<TokenResponse>builder()
                         .status(HttpStatus.OK.value())
@@ -110,6 +125,38 @@ public class AuthController {
                 BaseResponse.<Void>builder()
                         .status(HttpStatus.OK.value())
                         .message("Logged out successfully")
+                        .build()
+        );
+    }
+
+    // --- Password Reset ---
+
+    @Operation(summary = "Forgot Password", description = "Sends a password-reset OTP to the given email address if it is registered.")
+    @PostMapping("/forgot-password")
+    public ResponseEntity<BaseResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        authService.forgotPassword(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.ACCEPTED.value())
+                        .message("If this email is registered, you will receive a password reset OTP.")
+                        .build()
+        );
+    }
+
+    @Operation(summary = "Reset Password", description = "Resets the user's password using the password-reset token obtained from OTP verification.")
+    @PostMapping("/reset-password")
+    public ResponseEntity<BaseResponse<Void>> resetPassword(
+            @RequestHeader("Authorization") String bearerToken,
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        String resetToken = bearerToken.substring(7);
+        authService.resetPassword(resetToken, request);
+        return ResponseEntity.ok(
+                BaseResponse.<Void>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Password reset successfully. Please log in again.")
                         .build()
         );
     }

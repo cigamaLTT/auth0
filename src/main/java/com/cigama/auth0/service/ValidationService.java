@@ -6,6 +6,8 @@ import com.cigama.auth0.entity.ClientApp;
 import com.cigama.auth0.entity.RefreshToken;
 import com.cigama.auth0.entity.User;
 
+import java.util.Optional;
+
 public interface ValidationService {
 
     // --- Core Methods ---
@@ -17,4 +19,6 @@ public interface ValidationService {
     ClientApp validateApiKey(String apiKey);
 
     RefreshToken validateRefreshToken(String token);
+
+    Optional<User> validateUserExistsByEmail(String email);
 }

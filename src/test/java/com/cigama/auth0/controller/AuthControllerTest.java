@@ -1,5 +1,6 @@
 package com.cigama.auth0.controller;
 
+import com.cigama.auth0.dto.request.ClientMetadata;
 import com.cigama.auth0.dto.request.LoginRequest;
 import com.cigama.auth0.dto.request.RegisterRequest;
 import com.cigama.auth0.dto.response.TokenResponse;
@@ -87,7 +88,7 @@ class AuthControllerTest {
                 .expiredIn(3600L)
                 .build();
 
-        when(authService.login(any(LoginRequest.class), eq(apiKey)))
+        when(authService.login(any(LoginRequest.class), eq(apiKey), any(ClientMetadata.class)))
                 .thenReturn(tokenResponse);
 
         mockMvc.perform(post("/api/auth/login")
@@ -111,7 +112,7 @@ class AuthControllerTest {
                 .expiredIn(3600L)
                 .build();
 
-        when(authService.refresh("valid-refresh-token"))
+        when(authService.refresh(eq("valid-refresh-token"), any(ClientMetadata.class)))
                 .thenReturn(tokenResponse);
 
         mockMvc.perform(post("/api/auth/refresh")

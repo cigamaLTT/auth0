@@ -25,6 +25,9 @@ public class RedisStreamConfig {
     public static final String REGISTRATION_STREAM_KEY = "auth:registration:stream";
     public static final String REGISTRATION_GROUP = "registration-group";
 
+    public static final String FORGOT_PASSWORD_STREAM_KEY = "auth:password-reset:stream";
+    public static final String FORGOT_PASSWORD_GROUP = "forgot-password-group";
+
 
     @Bean
     public RedisTemplate<String, Object> streamRedisTemplate(RedisConnectionFactory factory) {
@@ -56,6 +59,26 @@ public class RedisStreamConfig {
 
         container.receive(StreamOffset.create(REGISTRATION_STREAM_KEY, ReadOffset.lastConsumed()), listener);
 
+
+        container.start();
+        return container;
+    }
+
+    @Bean
+    public StreamMessageListenerContainer<String, ObjectRecord<String, String>> forgotPasswordStreamListenerContainer(
+            RedisConnectionFactory factory,
+            com.cigama.auth0.event.listener.ForgotPasswordStreamListener listener
+    ) {
+        StreamMessageListenerContainerOptions<String, ObjectRecord<String, String>> options =
+                StreamMessageListenerContainerOptions.builder()
+                        .pollTimeout(Duration.ofMillis(100))
+                        .targetType(String.class)
+                        .build();
+
+        StreamMessageListenerContainer<String, ObjectRecord<String, String>> container =
+                StreamMessageListenerContainer.create(factory, options);
+
+        container.receive(StreamOffset.create(FORGOT_PASSWORD_STREAM_KEY, ReadOffset.lastConsumed()), listener);
 
         container.start();
         return container;
