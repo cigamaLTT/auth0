@@ -1,5 +1,6 @@
 package com.cigama.auth0.controller;
 
+import com.cigama.auth0.controller.doc.AuthApi;
 import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
@@ -12,16 +13,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
 
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication", description = "Endpoints for user registration, login, and token management")
-public class AuthController {
+public class AuthController implements AuthApi {
 
     // --- Variables ---
 
@@ -30,7 +27,7 @@ public class AuthController {
     // --- Public Endpoints ---
 
 
-    @Operation(summary = "Register a new user", description = "Initializes registration and sends an OTP via email.")
+    @Override
     @PostMapping("/register")
     public ResponseEntity<BaseResponse<Void>> register(
             @Valid @RequestBody RegisterRequest request,
@@ -45,7 +42,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Verify OTP", description = "Verifies the OTP sent to the user's email. For REGISTER: completes registration. For FORGOT_PASSWORD: returns a password-reset token.")
+    @Override
     @PostMapping("/verify-otp")
     public ResponseEntity<BaseResponse<?>> verifyOtp(
             @Valid @RequestBody VerifyOtpRequest request
@@ -77,7 +74,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Login", description = "Authenticates a user and returns access and refresh tokens.")
+    @Override
     @PostMapping("/login")
     public ResponseEntity<BaseResponse<TokenResponse>> login(
             @Valid @RequestBody LoginRequest request,
@@ -95,7 +92,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Refresh Token", description = "Generates a new access token using a valid refresh token.")
+    @Override
     @PostMapping("/refresh")
     public ResponseEntity<BaseResponse<TokenResponse>> refresh(
             @Valid @RequestBody RefreshTokenRequest request,
@@ -112,8 +109,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Logout", description = "Revokes the given access and refresh tokens.")
-    @SecurityRequirement(name = "bearerAuth")
+    @Override
     @PostMapping("/logout")
     public ResponseEntity<BaseResponse<Void>> logout(
             @RequestHeader("Authorization") String bearerToken,
@@ -131,7 +127,7 @@ public class AuthController {
 
     // --- Password Reset ---
 
-    @Operation(summary = "Forgot Password", description = "Sends a password-reset OTP to the given email address if it is registered.")
+    @Override
     @PostMapping("/forgot-password")
     public ResponseEntity<BaseResponse<Void>> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request
@@ -145,7 +141,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Reset Password", description = "Resets the user's password using the password-reset token obtained from OTP verification.")
+    @Override
     @PostMapping("/reset-password")
     public ResponseEntity<BaseResponse<Void>> resetPassword(
             @RequestHeader("Authorization") String bearerToken,
