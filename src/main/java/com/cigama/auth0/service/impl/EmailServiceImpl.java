@@ -94,5 +94,26 @@ public class EmailServiceImpl implements EmailService {
             throw new RuntimeException("Email delivery failed", e);
         }
     }
+
+    @Override
+    public void sendAccountLockoutEmail(String toEmail, String ipAddress) {
+        log.info("Sending account lockout alert to {}", toEmail);
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("Security Alert: Your account is locked");
+        message.setText("Multiple failed login attempts were detected from IP: " + ipAddress +
+                       ". Your account has been temporarily locked for security reasons.");
+        emailSender.send(message);
+    }
+
+    @Override
+    public void sendWelcomeEmail(String toEmail, String username) {
+        log.info("Sending welcome email to {}", toEmail);
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("Welcome to Auth0!");
+        message.setText("Hi " + username + ", Your account has been verified. Welcome aboard!");
+        emailSender.send(message);
+    }
 }
 

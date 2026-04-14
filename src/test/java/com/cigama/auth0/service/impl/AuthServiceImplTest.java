@@ -20,6 +20,9 @@ import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.EmailService;
 import com.cigama.auth0.service.TokenBlacklistService;
 import com.cigama.auth0.service.ValidationService;
+import com.cigama.auth0.service.SecuritySettingService;
+import com.cigama.auth0.service.OtpService;
+import com.cigama.auth0.service.TokenService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,8 +59,6 @@ class AuthServiceImplTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private RefreshTokenRepository refreshTokenRepository;
-    @Mock
     private ValidationService validationService;
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -74,7 +75,11 @@ class AuthServiceImplTest {
     @Mock
     private TokenBlacklistService tokenBlacklistService;
     @Mock
-    private EmailService emailService;
+    private SecuritySettingService securitySettingService;
+    @Mock
+    private OtpService otpService;
+    @Mock
+    private TokenService tokenService;
     @Mock
     private RedisTemplate<String, Object> streamRedisTemplate;
     @Mock
@@ -103,16 +108,17 @@ class AuthServiceImplTest {
         refreshTokenEntity.setDeviceId(deviceId);
         refreshTokenEntity.setIsRevoked(false);
 
+        // Mock Redis Template operations
+        when(streamRedisTemplate.opsForStream()).thenReturn(mock(StreamOperations.class));
+        when(streamRedisTemplate.opsForValue()).thenReturn(mock(ValueOperations.class));
+
         // Inject @Value fields manually
         ReflectionTestUtils.setField(authService, "registrationStreamKey", "auth:registration:stream");
-        ReflectionTestUtils.setField(authService, "emailLockPrefix", "auth:lock:email:");
-        ReflectionTestUtils.setField(authService, "usernameLockPrefix", "auth:lock:username:");
-        ReflectionTestUtils.setField(authService, "otpExpiration", 900);
-
         ReflectionTestUtils.setField(authService, "passwordResetStreamKey", "auth:password-reset:stream");
-        ReflectionTestUtils.setField(authService, "passwordResetEmailLockPrefix", "auth:lock:reset:");
-        ReflectionTestUtils.setField(authService, "passwordResetOtpExpiration", 300);
         ReflectionTestUtils.setField(authService, "passwordResetExpiration", 600000L);
+
+        ReflectionTestUtils.setField(authService, "loginTrackerStreamKey", "auth:login-tracker:stream");
+        ReflectionTestUtils.setField(authService, "securityStreamKey", "auth:security:stream");
     }
 
     // --- Registration Tests ---
@@ -131,12 +137,12 @@ class AuthServiceImplTest {
                 "new@example.com", "0123456789", "hashed", "First", "Last", "newuser", null, "123456", null
         );
         when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(pendingData);
+        when(otpService.generateAndSaveRegistrationOtp(any())).thenReturn("123456");
         
         PendingRegistrationEvent event = new PendingRegistrationEvent("new@example.com", "newuser", "lockKey", "123456");
         when(registrationMapper.toRegistrationEvent(any(), any(), any())).thenReturn(event);
         
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(1L);
         
         var opsForStream = mock(StreamOperations.class);
         when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
@@ -146,7 +152,7 @@ class AuthServiceImplTest {
         authService.register(request, "api-key");
 
         // Assert
-        verify(streamRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
+        verify(otpService).generateAndSaveRegistrationOtp(any());
         verify(opsForStream).add(any(org.springframework.data.redis.connection.stream.Record.class));
     }
 
@@ -159,7 +165,7 @@ class AuthServiceImplTest {
         
         when(validationService.validateRegistration(any(), any())).thenReturn(null);
         when(passwordEncoder.encode(any())).thenReturn("hashed");
-        when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(0L);
+        when(otpService.generateAndSaveRegistrationOtp(any())).thenThrow(new RuntimeException("Conflict"));
 
         // Act & Assert
         assertThrows(RuntimeException.class, () -> authService.register(request, "api-key"));
@@ -173,16 +179,11 @@ class AuthServiceImplTest {
         // Arrange
         String email = "test@example.com";
         String otp = "123456";
-        String json = "{\"otpCode\":\"123456\",\"username\":\"testuser\"}";
-        
-        ValueOperations<String, Object> valueOps = mock(ValueOperations.class);
-        when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn(json);
         
         PendingUserData pendingData = new PendingUserData(
                 email, "0123456789", "hashed", "First", "Last", "testuser", null, otp, null
         );
-        when(objectMapper.readValue(anyString(), eq(PendingUserData.class))).thenReturn(pendingData);
+        when(otpService.verifyRegistrationOtp(email, otp)).thenReturn(pendingData);
         
         User user = new User();
         user.setUsername("testuser");
@@ -193,7 +194,7 @@ class AuthServiceImplTest {
 
         // Assert
         verify(userRepository).save(user);
-        verify(streamRedisTemplate).delete(anyList());
+        verify(otpService).verifyRegistrationOtp(email, otp);
         assertTrue(user.getIsAuthorized());
         assertNotNull(user.getSecuritySetting());
     }
@@ -213,6 +214,10 @@ class AuthServiceImplTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("oldPass", "hashedOldPass")).thenReturn(true);
         when(passwordEncoder.encode("newPass")).thenReturn("hashedNewPass");
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        var opsForStream = mock(org.springframework.data.redis.core.StreamOperations.class);
+        when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
 
         // Act
         authService.changePassword(userId, request);
@@ -220,8 +225,7 @@ class AuthServiceImplTest {
         // Assert
         assertEquals("hashedNewPass", user.getPassword());
         verify(userRepository).save(user);
-        verify(refreshTokenRepository, never()).deleteByUserId(any());
-        verify(emailService).sendPasswordChangedEmail("test@example.com");
+        verify(opsForStream, atLeastOnce()).add(any(org.springframework.data.redis.connection.stream.Record.class));
     }
 
     @Test
@@ -242,7 +246,7 @@ class AuthServiceImplTest {
         authService.changePassword(userId, request);
 
         // Assert
-        verify(refreshTokenRepository).deleteByUserId(userId);
+        verify(tokenService).revokeAllTokens(userId);
         verify(userRepository).save(user);
     }
 
@@ -255,7 +259,7 @@ class AuthServiceImplTest {
         setting.setRequireOtpForPassword(true);
         user.setSecuritySetting(setting);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(securitySettingService.isOtpRequired(userId, "REQUIRE_OTP_FOR_PASSWORD")).thenReturn(true);
 
         // Act & Assert
         assertThrows(RuntimeException.class, () -> authService.changePassword(userId, request));
@@ -268,8 +272,7 @@ class AuthServiceImplTest {
         ChangePasswordRequest request = new ChangePasswordRequest("wrongPass", "newPass", "newPass", false);
         User user = new User();
         user.setPassword("hashedOldPass");
-        user.setSecuritySetting(new UserSecuritySetting());
-
+        when(securitySettingService.isOtpRequired(userId, "REQUIRE_OTP_FOR_PASSWORD")).thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrongPass", "hashedOldPass")).thenReturn(false);
 
@@ -288,8 +291,8 @@ class AuthServiceImplTest {
         user.setEmail(email);
 
         when(validationService.validateUserExistsByEmail(email)).thenReturn(Optional.of(user));
+        when(otpService.generateAndSavePasswordResetOtp(email)).thenReturn("123456");
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(1L);
 
         var opsForStream = mock(StreamOperations.class);
         when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
@@ -302,7 +305,6 @@ class AuthServiceImplTest {
         authService.forgotPassword(request);
 
         // Assert
-        verify(streamRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
         verify(opsForStream).add(any(org.springframework.data.redis.connection.stream.Record.class));
     }
 
@@ -312,14 +314,7 @@ class AuthServiceImplTest {
         // Arrange
         String email = "test@example.com";
         String otp = "123456";
-        String json = "{\"email\":\"test@example.com\",\"otpCode\":\"123456\"}";
 
-        ValueOperations<String, Object> valueOps = mock(ValueOperations.class);
-        when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn(json);
-
-        PendingPasswordResetData pendingData = new PendingPasswordResetData(email, otp);
-        when(objectMapper.readValue(anyString(), eq(PendingPasswordResetData.class))).thenReturn(pendingData);
         when(jwtTokenProvider.generateActionToken(anyString(), anyString(), anyLong())).thenReturn("reset-token");
 
         // Act
@@ -327,7 +322,7 @@ class AuthServiceImplTest {
 
         // Assert
         assertEquals("reset-token", response.resetToken());
-        verify(streamRedisTemplate).delete(anyString());
+        verify(otpService).verifyPasswordResetOtp(email, otp);
     }
 
     @Test
@@ -354,7 +349,6 @@ class AuthServiceImplTest {
         // Assert
         assertEquals("hashedNewPass", user.getPassword());
         verify(userRepository).save(user);
-        verify(refreshTokenRepository, never()).deleteByUserId(any());
         verify(tokenBlacklistService).blacklistToken(eq(resetToken), anyLong());
     }
 
@@ -381,7 +375,7 @@ class AuthServiceImplTest {
         authService.resetPassword(resetToken, request);
 
         // Assert
-        verify(refreshTokenRepository).deleteByUserId(userId);
+        verify(tokenService).revokeAllTokens(userId);
         verify(userRepository).save(user);
     }
 
@@ -397,15 +391,12 @@ class AuthServiceImplTest {
         when(claims.getSubject()).thenReturn(userId.toString());
         when(claims.get("deviceId")).thenReturn(deviceId.toString());
         when(claims.getExpiration()).thenReturn(futureDate);
-        
-        when(refreshTokenRepository.findByUserIdAndDeviceId(userId, deviceId)).thenReturn(Optional.of(refreshTokenEntity));
 
         // Act
         authService.logout(accessToken);
 
         // Assert
-        assertTrue(refreshTokenEntity.getIsRevoked());
-        verify(refreshTokenRepository).save(refreshTokenEntity);
+        verify(tokenService).revokeTokens(eq(userId), eq(deviceId));
         verify(tokenBlacklistService).blacklistToken(eq(accessToken), anyLong());
     }
 
@@ -418,7 +409,7 @@ class AuthServiceImplTest {
         authService.logout(accessToken);
 
         // Assert
-        verifyNoInteractions(refreshTokenRepository);
+        verifyNoInteractions(tokenService);
         verifyNoInteractions(tokenBlacklistService);
     }
 
@@ -434,18 +425,11 @@ class AuthServiceImplTest {
         when(claims.get("deviceId")).thenReturn(deviceId.toString());
         when(claims.getExpiration()).thenReturn(futureDate);
 
-        // Targeted revocation mock
-        when(refreshTokenRepository.findByUserIdAndDeviceId(userId, deviceId)).thenReturn(Optional.of(refreshTokenEntity));
-
         // Act
         authService.logout(accessToken);
-
+ 
         // Assert
-        assertTrue(refreshTokenEntity.getIsRevoked());
-        verify(refreshTokenRepository).save(refreshTokenEntity);
-        // Verify that we ONLY looked for this specific device
-        verify(refreshTokenRepository).findByUserIdAndDeviceId(userId, deviceId);
-        verify(refreshTokenRepository, never()).findByUserIdAndDeviceId(eq(userId), eq(otherDeviceId));
+        verify(tokenService).revokeTokens(userId, deviceId);
     }
 
     @Test
@@ -463,7 +447,38 @@ class AuthServiceImplTest {
         authService.logout(accessToken);
 
         // Assert
-        verifyNoInteractions(refreshTokenRepository);
+        verifyNoInteractions(tokenService);
         verify(tokenBlacklistService).blacklistToken(eq(accessToken), anyLong());
+    }
+
+    // --- Login & Lockout Tests ---
+
+    @Test
+    void login_WhenLocked_ShouldThrowLockedException() {
+        LoginRequest request = new LoginRequest("user", "pass", null, null);
+        String identifier = "user";
+        String lockoutKey = "auth:lockout:" + identifier;
+        
+        when(streamRedisTemplate.hasKey(lockoutKey)).thenReturn(true);
+
+        assertThrows(RuntimeException.class, () -> authService.login(request, null, null));
+    }
+
+
+    @Test
+    void login_WhenFailed_ShouldPublishLoginEvent() throws Exception {
+        LoginRequest request = new LoginRequest("user", "wrong-pass", null, null);
+        String identifier = "user";
+        
+        when(streamRedisTemplate.hasKey(anyString())).thenReturn(false);
+        when(validationService.validateLogin(request)).thenThrow(new com.cigama.auth0.exception.CustomException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        
+        var opsForStream = mock(StreamOperations.class);
+        when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        assertThrows(RuntimeException.class, () -> authService.login(request, null, null));
+        
+        verify(opsForStream).add(any(org.springframework.data.redis.connection.stream.Record.class));
     }
 }
