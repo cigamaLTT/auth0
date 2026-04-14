@@ -19,6 +19,11 @@ public class ClientMetadata {
 
     public ClientMetadata() {}
 
+    public ClientMetadata(String ipAddress, String userAgent) {
+        this.ipAddress = ipAddress;
+        this.userAgent = userAgent;
+    }
+
     public ClientMetadata(String ipAddress, String userAgent, UUID deviceId, String deviceName) {
         this.ipAddress = ipAddress;
         this.userAgent = userAgent;

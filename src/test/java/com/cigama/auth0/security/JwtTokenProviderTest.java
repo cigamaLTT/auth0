@@ -170,4 +170,27 @@ class JwtTokenProviderTest {
         assertThrows(IllegalArgumentException.class, () -> jwtTokenProvider.extractAllClaims(""));
         assertThrows(IllegalArgumentException.class, () -> jwtTokenProvider.extractAllClaims(null));
     }
+
+    @Test
+    void generateActionToken_ProducesValidJwtWithPurpose() {
+        String subject = "test@example.com";
+        String purpose = "PASSWORD_RESET";
+        long expiration = 600000L;
+
+        String token = jwtTokenProvider.generateActionToken(subject, purpose, expiration);
+        Claims claims = jwtTokenProvider.extractAllClaims(token);
+
+        assertNotNull(token);
+        assertEquals(subject, claims.getSubject());
+        assertEquals(purpose, claims.get("purpose", String.class));
+        assertNotNull(claims.getExpiration());
+    }
+
+    @Test
+    void generateActionToken_ExpiredToken_ThrowsExpiredJwtException() throws Exception {
+        String token = jwtTokenProvider.generateActionToken("test@example.com", "TEST_PURPOSE", 1L);
+        Thread.sleep(10);
+
+        assertThrows(ExpiredJwtException.class, () -> jwtTokenProvider.extractAllClaims(token));
+    }
 }

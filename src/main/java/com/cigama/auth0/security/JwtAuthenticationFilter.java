@@ -75,6 +75,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                    // Set request attributes for downstream use
+                    request.setAttribute("userId", payload.getUserId());
+                    if (payload.getDeviceId() != null) {
+                        request.setAttribute("deviceId", payload.getDeviceId());
+                    }
                 }
             } catch (ExpiredJwtException ex) {
                 request.setAttribute("jwtExceptionType", "EXPIRED");

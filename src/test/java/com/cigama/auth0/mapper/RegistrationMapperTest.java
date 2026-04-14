@@ -16,18 +16,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @SpringBootTest
 class RegistrationMapperTest {
 
+    // --- Fields ---
+
     @Autowired
     private RegistrationMapper registrationMapper;
+
+    // --- Test Cases ---
 
     @Test
     void toPendingUserData_ShouldMapCorrectly() {
         // Arrange
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("test@example.com");
-        request.setFirstName("John");
-        request.setLastName("Doe");
-        request.setUsername("johndoe");
-        request.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        RegisterRequest request = new RegisterRequest(
+                "test@example.com",
+                "0123456789",
+                "Password123",
+                "Password123",
+                "John",
+                "Doe",
+                "johndoe",
+                LocalDate.of(1990, 1, 1)
+        );
         
         String encodedPass = "encodedPass";
         String otp = "123456";
@@ -38,7 +46,7 @@ class RegistrationMapperTest {
 
         // Assert
         assertNotNull(pending);
-        assertEquals(request.getEmail(), pending.email());
+        assertEquals(request.email(), pending.email());
         assertEquals(encodedPass, pending.password());
         assertEquals(otp, pending.otpCode());
         assertEquals(clientId, pending.clientId());
@@ -47,9 +55,9 @@ class RegistrationMapperTest {
     @Test
     void toRegistrationEvent_ShouldMapCorrectly() {
         // Arrange
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("test@example.com");
-        request.setUsername("johndoe");
+        RegisterRequest request = new RegisterRequest(
+                "test@example.com", "0123456789", "pass", "pass", "John", "Doe", "johndoe", null
+        );
         
         String registrationId = "lock:email:test@example.com";
         String otp = "123456";
@@ -59,8 +67,8 @@ class RegistrationMapperTest {
 
         // Assert
         assertNotNull(event);
-        assertEquals(event.email(), request.getEmail());
-        assertEquals(event.username(), request.getUsername());
+        assertEquals(event.email(), request.email());
+        assertEquals(event.username(), request.username());
         assertEquals(event.otpCode(), otp);
         assertEquals(event.registrationId(), registrationId);
     }
@@ -69,14 +77,14 @@ class RegistrationMapperTest {
     void pendingToUser_ShouldMapCorrectly() {
         // Arrange
         PendingUserData pending = new PendingUserData(
-                "johndoe",
                 "test@example.com",
+                "0123456789",
                 "encoded",
-                "123456",
                 "John",
                 "Doe",
+                "johndoe",
                 null,
-                null,
+                "123456",
                 null
         );
 

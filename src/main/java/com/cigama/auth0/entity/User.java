@@ -59,6 +59,9 @@ public class User extends BaseAuditEntity {
     )
     private Set<ClientApp> clientApps = new HashSet<>();
 
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, optional = false)
+    private UserSecuritySetting securitySetting;
+
     public User() {}
 
     public UUID getUserId() {
@@ -155,5 +158,13 @@ public class User extends BaseAuditEntity {
 
     public void setClientApps(Set<ClientApp> clientApps) {
         this.clientApps = clientApps;
+    }
+
+    public UserSecuritySetting getSecuritySetting() {
+        return securitySetting;
+    }
+
+    public void setSecuritySetting(UserSecuritySetting securitySetting) {
+        this.securitySetting = securitySetting;
     }
 }

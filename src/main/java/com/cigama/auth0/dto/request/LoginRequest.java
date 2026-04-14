@@ -1,18 +1,14 @@
 package com.cigama.auth0.dto.request;
 
-
 import com.cigama.auth0.validation.ConfigurableLength;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 import java.util.UUID;
 
-
-public class LoginRequest {
-
-    ///  -- Credentials --
-
+public record LoginRequest(
     @NotBlank(message = "Email or Username is required")
-    private String emailOrUsername;
+    String emailOrUsername,
 
     @NotBlank(message = "Password is required")
     @ConfigurableLength(minKey = "app.policy.password-min-length")
@@ -20,41 +16,9 @@ public class LoginRequest {
             regexp = "^(?=.*[A-Z]).+$",
             message = "Password must contain at least 1 uppercase letter"
     )
-    private String password;
+    String password,
 
-    private UUID deviceId;
+    UUID deviceId,
 
-    private String deviceName;
-
-    public String getEmailOrUsername() {
-        return emailOrUsername;
-    }
-
-    public void setEmailOrUsername(String emailOrUsername) {
-        this.emailOrUsername = emailOrUsername;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(UUID deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-}
+    String deviceName
+) {}

@@ -57,14 +57,11 @@ public class ValidationServiceImpl implements ValidationService {
      */
     @Override
     public ClientApp validateRegistration(RegisterRequest request, String apiKey) {
-        if (!request.getPassword().equals(request.getConfirmPassword())) {
-            throw new CustomException(HttpStatus.BAD_REQUEST, "Passwords do not match");
+        if (userRepository.existsByEmail(request.email())) {
+            throw new CustomException(HttpStatus.CONFLICT, "Email is already in use.");
         }
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new CustomException(HttpStatus.CONFLICT, "Email is already in use");
-        }
-        if (userRepository.existsByUsername(request.getUsername())) {
-            throw new CustomException(HttpStatus.CONFLICT, "Username is already in use");
+        if (userRepository.existsByUsername(request.username())) {
+            throw new CustomException(HttpStatus.CONFLICT, "Username is already in use.");
         }
         return validateApiKey(apiKey);
     }
@@ -74,10 +71,10 @@ public class ValidationServiceImpl implements ValidationService {
      */
     @Override
     public User validateLogin(LoginRequest request) {
-        User user = userRepository.findWithClientAppsByEmailOrUsername(request.getEmailOrUsername())
+        User user = userRepository.findWithClientAppsByEmailOrUsername(request.emailOrUsername())
                 .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new CustomException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
         }
         return user;

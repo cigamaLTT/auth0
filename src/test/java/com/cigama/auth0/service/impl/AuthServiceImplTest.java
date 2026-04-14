@@ -1,14 +1,25 @@
 package com.cigama.auth0.service.impl;
 
+import com.cigama.auth0.dto.request.*;
+import com.cigama.auth0.dto.cache.PendingPasswordResetData;
+import com.cigama.auth0.dto.cache.PendingUserData;
+import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.entity.RefreshToken;
+import com.cigama.auth0.entity.User;
+import com.cigama.auth0.entity.Role;
+import com.cigama.auth0.entity.UserSecuritySetting;
+import com.cigama.auth0.event.dto.ForgotPasswordEvent;
+import com.cigama.auth0.event.dto.PendingRegistrationEvent;
+import com.cigama.auth0.mapper.PasswordResetMapper;
+import com.cigama.auth0.mapper.RegistrationMapper;
+import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.security.JwtTokenProvider;
+import com.cigama.auth0.service.EmailService;
 import com.cigama.auth0.service.TokenBlacklistService;
 import com.cigama.auth0.service.ValidationService;
-import com.cigama.auth0.mapper.UserMapper;
-import com.cigama.auth0.mapper.RegistrationMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,20 +30,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
-
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
-import com.cigama.auth0.dto.request.RegisterRequest;
-import com.cigama.auth0.dto.cache.PendingUserData;
-import com.cigama.auth0.entity.User;
-import com.cigama.auth0.entity.Role;
-import com.cigama.auth0.event.dto.PendingRegistrationEvent;
 
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.List;
 
@@ -43,7 +51,7 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceImplTest {
 
-    // --- Variables ---
+    // --- Fields ---
 
     @Mock
     private UserRepository userRepository;
@@ -60,9 +68,13 @@ class AuthServiceImplTest {
     @Mock
     private RegistrationMapper registrationMapper;
     @Mock
+    private PasswordResetMapper passwordResetMapper;
+    @Mock
     private ClientAppRepository clientAppRepository;
     @Mock
     private TokenBlacklistService tokenBlacklistService;
+    @Mock
+    private EmailService emailService;
     @Mock
     private RedisTemplate<String, Object> streamRedisTemplate;
     @Mock
@@ -74,49 +86,61 @@ class AuthServiceImplTest {
     private String accessToken;
     private String refreshTokenRaw;
     private RefreshToken refreshTokenEntity;
+    private UUID userId;
+    private UUID deviceId;
+
+    // --- Setup ---
 
     @BeforeEach
     void setUp() {
         accessToken = "valid_access_token";
         refreshTokenRaw = "valid_refresh_token_raw";
+        userId = UUID.randomUUID();
+        deviceId = UUID.randomUUID();
+
         refreshTokenEntity = new RefreshToken();
-        refreshTokenEntity.setUserId(UUID.randomUUID());
+        refreshTokenEntity.setUserId(userId);
+        refreshTokenEntity.setDeviceId(deviceId);
         refreshTokenEntity.setIsRevoked(false);
 
-        // Inject @Value fields manually for unit test
+        // Inject @Value fields manually
         ReflectionTestUtils.setField(authService, "registrationStreamKey", "auth:registration:stream");
         ReflectionTestUtils.setField(authService, "emailLockPrefix", "auth:lock:email:");
         ReflectionTestUtils.setField(authService, "usernameLockPrefix", "auth:lock:username:");
         ReflectionTestUtils.setField(authService, "otpExpiration", 900);
+
+        ReflectionTestUtils.setField(authService, "passwordResetStreamKey", "auth:password-reset:stream");
+        ReflectionTestUtils.setField(authService, "passwordResetEmailLockPrefix", "auth:lock:reset:");
+        ReflectionTestUtils.setField(authService, "passwordResetOtpExpiration", 300);
+        ReflectionTestUtils.setField(authService, "passwordResetExpiration", 600000L);
     }
 
-    // --- New Async Registration Tests ---
+    // --- Registration Tests ---
 
     @Test
     void register_WhenLocksSucceed_ShouldPushToStream() throws Exception {
         // Arrange
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("new@example.com");
-        request.setUsername("newuser");
-        request.setPassword("Secure123");
+        RegisterRequest request = new RegisterRequest(
+                "new@example.com", "0123456789", "Secure123", "Secure123", "First", "Last", "newuser", null
+        );
         
         when(validationService.validateRegistration(any(), any())).thenReturn(null);
         when(passwordEncoder.encode(any())).thenReturn("hashed");
         
-        PendingUserData pendingData = new PendingUserData("newuser", "new@example.com", "hashed", "123456", null, null, null, null, null);
+        PendingUserData pendingData = new PendingUserData(
+                "new@example.com", "0123456789", "hashed", "First", "Last", "newuser", null, "123456", null
+        );
         when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(pendingData);
         
-        PendingRegistrationEvent event = new PendingRegistrationEvent("new@example.com", "username", "123456", "lock");
+        PendingRegistrationEvent event = new PendingRegistrationEvent("new@example.com", "newuser", "lockKey", "123456");
         when(registrationMapper.toRegistrationEvent(any(), any(), any())).thenReturn(event);
         
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        
         when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(1L);
         
-        // Use a realish-looking mock for opsForStream
-        var opsForStream = mock(org.springframework.data.redis.core.StreamOperations.class);
+        var opsForStream = mock(StreamOperations.class);
         when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
-        doReturn(mock(org.springframework.data.redis.connection.stream.RecordId.class)).when(opsForStream).add(any());
+        doReturn(mock(RecordId.class)).when(opsForStream).add(any());
 
         // Act
         authService.register(request, "api-key");
@@ -127,21 +151,14 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void register_WhenLocksFail_ShouldThrowException() throws Exception {
+    void register_WhenLocksFail_ShouldThrowConflict() throws Exception {
         // Arrange
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("taken@example.com");
-        request.setUsername("takenuser");
-        request.setPassword("Secure123");
+        RegisterRequest request = new RegisterRequest(
+                "taken@example.com", "0123456789", "Secure123", "Secure123", "First", "Last", "takenuser", null
+        );
         
         when(validationService.validateRegistration(any(), any())).thenReturn(null);
         when(passwordEncoder.encode(any())).thenReturn("hashed");
-        
-        PendingUserData pendingData = new PendingUserData("takenuser", "taken@example.com", "hashed", "123456", null, null, null, null, null);
-        when(registrationMapper.toPendingUserData(any(), any(), any(), any())).thenReturn(pendingData);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        
-        // Lua script returns 0 = conflict
         when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(0L);
 
         // Act & Assert
@@ -151,6 +168,7 @@ class AuthServiceImplTest {
     // --- OTP Verification Tests ---
 
     @Test
+    @SuppressWarnings("unchecked")
     void verifyOtp_WithValidOtp_ShouldSaveUserAndCleanup() throws Exception {
         // Arrange
         String email = "test@example.com";
@@ -161,10 +179,13 @@ class AuthServiceImplTest {
         when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.get(anyString())).thenReturn(json);
         
-        PendingUserData pendingData = new PendingUserData(email, null, "hashed", null, null, "testuser", null, otp, null);
+        PendingUserData pendingData = new PendingUserData(
+                email, "0123456789", "hashed", "First", "Last", "testuser", null, otp, null
+        );
         when(objectMapper.readValue(anyString(), eq(PendingUserData.class))).thenReturn(pendingData);
         
         User user = new User();
+        user.setUsername("testuser");
         when(registrationMapper.pendingToUser(any())).thenReturn(user);
 
         // Act
@@ -174,71 +195,275 @@ class AuthServiceImplTest {
         verify(userRepository).save(user);
         verify(streamRedisTemplate).delete(anyList());
         assertTrue(user.getIsAuthorized());
+        assertNotNull(user.getSecuritySetting());
+    }
+
+    // --- Password Change Tests ---
+
+    @Test
+    void changePassword_WithValidData_ShouldUpdatePassword() {
+        // Arrange
+        ChangePasswordRequest request = new ChangePasswordRequest("oldPass", "newPass", "newPass", false);
+        User user = new User();
+        user.setUserId(userId);
+        user.setPassword("hashedOldPass");
+        user.setEmail("test@example.com");
+        user.setSecuritySetting(new UserSecuritySetting());
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("oldPass", "hashedOldPass")).thenReturn(true);
+        when(passwordEncoder.encode("newPass")).thenReturn("hashedNewPass");
+
+        // Act
+        authService.changePassword(userId, request);
+
+        // Assert
+        assertEquals("hashedNewPass", user.getPassword());
+        verify(userRepository).save(user);
+        verify(refreshTokenRepository, never()).deleteByUserId(any());
+        verify(emailService).sendPasswordChangedEmail("test@example.com");
     }
 
     @Test
-    void verifyOtp_WithInvalidOtp_ShouldThrowException() throws Exception {
+    void changePassword_WithLogoutAll_ShouldRevokeAllTokens() {
         // Arrange
-        String email = "test@example.com";
-        String otp = "wrong";
-        String json = "{\"otpCode\":\"123456\"}";
-        
-        ValueOperations<String, Object> valueOps = mock(ValueOperations.class);
-        when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn(json);
-        
-        PendingUserData pendingData = new PendingUserData("testuser", email, "hashed", "123456", null, null, null, null, null);
-        when(objectMapper.readValue(anyString(), eq(PendingUserData.class))).thenReturn(pendingData);
+        ChangePasswordRequest request = new ChangePasswordRequest("oldPass", "newPass", "newPass", true);
+        User user = new User();
+        user.setUserId(userId);
+        user.setPassword("hashedOldPass");
+        user.setEmail("test@example.com");
+        user.setSecuritySetting(new UserSecuritySetting());
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("oldPass", "hashedOldPass")).thenReturn(true);
+        when(passwordEncoder.encode("newPass")).thenReturn("hashedNewPass");
+
+        // Act
+        authService.changePassword(userId, request);
+
+        // Assert
+        verify(refreshTokenRepository).deleteByUserId(userId);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void changePassword_WhenOtpRequired_ShouldThrowForbidden() {
+        // Arrange
+        ChangePasswordRequest request = new ChangePasswordRequest("oldPass", "newPass", "newPass", false);
+        User user = new User();
+        UserSecuritySetting setting = new UserSecuritySetting();
+        setting.setRequireOtpForPassword(true);
+        user.setSecuritySetting(setting);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // Act & Assert
-        assertThrows(RuntimeException.class, () -> authService.verifyOtp(email, otp));
+        assertThrows(RuntimeException.class, () -> authService.changePassword(userId, request));
         verify(userRepository, never()).save(any());
     }
 
-    // --- Core Methods ---
+    @Test
+    void changePassword_WithIncorrectOldPassword_ShouldThrowBadRequest() {
+        // Arrange
+        ChangePasswordRequest request = new ChangePasswordRequest("wrongPass", "newPass", "newPass", false);
+        User user = new User();
+        user.setPassword("hashedOldPass");
+        user.setSecuritySetting(new UserSecuritySetting());
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrongPass", "hashedOldPass")).thenReturn(false);
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> authService.changePassword(userId, request));
+    }
+
+    // --- Password Reset Tests ---
 
     @Test
-    void logout_WithValidTokens_ShouldRevokeAndBlacklist() {
+    void forgotPassword_WhenUserExists_ShouldPushToStream() throws Exception {
+        // Arrange
+        String email = "test@example.com";
+        ForgotPasswordRequest request = new ForgotPasswordRequest(email);
+        User user = new User();
+        user.setEmail(email);
+
+        when(validationService.validateUserExistsByEmail(email)).thenReturn(Optional.of(user));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(streamRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(1L);
+
+        var opsForStream = mock(StreamOperations.class);
+        when(streamRedisTemplate.opsForStream()).thenReturn(opsForStream);
+        doReturn(mock(RecordId.class)).when(opsForStream).add(any());
+
+        ForgotPasswordEvent event = new ForgotPasswordEvent(email, "lockKey", "123456");
+        when(passwordResetMapper.toForgotPasswordEvent(any(), any(), any())).thenReturn(event);
+
+        // Act
+        authService.forgotPassword(request);
+
+        // Assert
+        verify(streamRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
+        verify(opsForStream).add(any(org.springframework.data.redis.connection.stream.Record.class));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void verifyOtpForPasswordReset_WithValidOtp_ShouldReturnResetToken() throws Exception {
+        // Arrange
+        String email = "test@example.com";
+        String otp = "123456";
+        String json = "{\"email\":\"test@example.com\",\"otpCode\":\"123456\"}";
+
+        ValueOperations<String, Object> valueOps = mock(ValueOperations.class);
+        when(streamRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get(anyString())).thenReturn(json);
+
+        PendingPasswordResetData pendingData = new PendingPasswordResetData(email, otp);
+        when(objectMapper.readValue(anyString(), eq(PendingPasswordResetData.class))).thenReturn(pendingData);
+        when(jwtTokenProvider.generateActionToken(anyString(), anyString(), anyLong())).thenReturn("reset-token");
+
+        // Act
+        VerifyOtpResponse response = authService.verifyOtpForPasswordReset(email, otp);
+
+        // Assert
+        assertEquals("reset-token", response.resetToken());
+        verify(streamRedisTemplate).delete(anyString());
+    }
+
+    @Test
+    void resetPassword_WithValidToken_ShouldUpdatePassword() {
+        // Arrange
+        String resetToken = "valid-reset-token";
+        ResetPasswordRequest request = new ResetPasswordRequest("newPass", "newPass", false);
+        Claims claims = mock(Claims.class);
+        String email = "test@example.com";
+        User user = new User();
+        user.setEmail(email);
+
+        when(tokenBlacklistService.isBlacklisted(resetToken)).thenReturn(false);
+        when(jwtTokenProvider.extractAllClaims(resetToken)).thenReturn(claims);
+        when(claims.get("purpose")).thenReturn("PASSWORD_RESET");
+        when(claims.getSubject()).thenReturn(email);
+        when(claims.getExpiration()).thenReturn(new Date(System.currentTimeMillis() + 100000));
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode("newPass")).thenReturn("hashedNewPass");
+
+        // Act
+        authService.resetPassword(resetToken, request);
+
+        // Assert
+        assertEquals("hashedNewPass", user.getPassword());
+        verify(userRepository).save(user);
+        verify(refreshTokenRepository, never()).deleteByUserId(any());
+        verify(tokenBlacklistService).blacklistToken(eq(resetToken), anyLong());
+    }
+
+    @Test
+    void resetPassword_WithLogoutAll_ShouldRevokeAllTokens() {
+        // Arrange
+        String resetToken = "valid-reset-token";
+        ResetPasswordRequest request = new ResetPasswordRequest("newPass", "newPass", true);
+        Claims claims = mock(Claims.class);
+        String email = "test@example.com";
+        User user = new User();
+        user.setUserId(userId);
+        user.setEmail(email);
+
+        when(tokenBlacklistService.isBlacklisted(resetToken)).thenReturn(false);
+        when(jwtTokenProvider.extractAllClaims(resetToken)).thenReturn(claims);
+        when(claims.get("purpose")).thenReturn("PASSWORD_RESET");
+        when(claims.getSubject()).thenReturn(email);
+        when(claims.getExpiration()).thenReturn(new Date(System.currentTimeMillis() + 100000));
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode("newPass")).thenReturn("hashedNewPass");
+
+        // Act
+        authService.resetPassword(resetToken, request);
+
+        // Assert
+        verify(refreshTokenRepository).deleteByUserId(userId);
+        verify(userRepository).save(user);
+    }
+
+    // --- Logout Tests ---
+
+    @Test
+    void logout_WithValidToken_ShouldRevokeAndBlacklist() {
         // Arrange
         Claims claims = mock(Claims.class);
         Date futureDate = new Date(System.currentTimeMillis() + 100000);
         
-        when(validationService.validateRefreshToken(refreshTokenRaw)).thenReturn(refreshTokenEntity);
         when(jwtTokenProvider.extractAllClaims(accessToken)).thenReturn(claims);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("deviceId")).thenReturn(deviceId.toString());
+        when(claims.getExpiration()).thenReturn(futureDate);
+        
+        when(refreshTokenRepository.findByUserIdAndDeviceId(userId, deviceId)).thenReturn(Optional.of(refreshTokenEntity));
+
+        // Act
+        authService.logout(accessToken);
+
+        // Assert
+        assertTrue(refreshTokenEntity.getIsRevoked());
+        verify(refreshTokenRepository).save(refreshTokenEntity);
+        verify(tokenBlacklistService).blacklistToken(eq(accessToken), anyLong());
+    }
+
+    @Test
+    void logout_WithExpiredAccessToken_ShouldReturnEarly() {
+        // Arrange
+        when(jwtTokenProvider.extractAllClaims(accessToken)).thenThrow(new ExpiredJwtException(null, null, "expired"));
+
+        // Act
+        authService.logout(accessToken);
+
+        // Assert
+        verifyNoInteractions(refreshTokenRepository);
+        verifyNoInteractions(tokenBlacklistService);
+    }
+
+    @Test
+    void logout_MultiDevice_ShouldRevokeOnlyTargetDevice() {
+        // Arrange
+        UUID otherDeviceId = UUID.randomUUID();
+        Claims claims = mock(Claims.class);
+        Date futureDate = new Date(System.currentTimeMillis() + 100000);
+
+        when(jwtTokenProvider.extractAllClaims(accessToken)).thenReturn(claims);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("deviceId")).thenReturn(deviceId.toString());
+        when(claims.getExpiration()).thenReturn(futureDate);
+
+        // Targeted revocation mock
+        when(refreshTokenRepository.findByUserIdAndDeviceId(userId, deviceId)).thenReturn(Optional.of(refreshTokenEntity));
+
+        // Act
+        authService.logout(accessToken);
+
+        // Assert
+        assertTrue(refreshTokenEntity.getIsRevoked());
+        verify(refreshTokenRepository).save(refreshTokenEntity);
+        // Verify that we ONLY looked for this specific device
+        verify(refreshTokenRepository).findByUserIdAndDeviceId(userId, deviceId);
+        verify(refreshTokenRepository, never()).findByUserIdAndDeviceId(eq(userId), eq(otherDeviceId));
+    }
+
+    @Test
+    void logout_WithMissingClaims_ShouldBlacklistButNotRevoke() {
+        // Arrange
+        Claims claims = mock(Claims.class);
+        Date futureDate = new Date(System.currentTimeMillis() + 100000);
+
+        when(jwtTokenProvider.extractAllClaims(accessToken)).thenReturn(claims);
+        when(claims.getSubject()).thenReturn(null); // Missing userId
+        when(claims.get("deviceId")).thenReturn(null); // Missing deviceId
         when(claims.getExpiration()).thenReturn(futureDate);
 
         // Act
-        authService.logout(accessToken, refreshTokenRaw);
+        authService.logout(accessToken);
 
         // Assert
-        assertTrue(refreshTokenEntity.getIsRevoked());
-        verify(refreshTokenRepository, times(1)).save(refreshTokenEntity);
-        verify(tokenBlacklistService, times(1)).blacklistToken(eq(accessToken), anyLong());
-    }
-
-    @Test
-    void logout_WithExpiredAccessToken_ShouldRevokeRefreshAndSkipBlacklist() {
-        // Arrange
-        when(validationService.validateRefreshToken(refreshTokenRaw)).thenReturn(refreshTokenEntity);
-        when(jwtTokenProvider.extractAllClaims(accessToken)).thenThrow(mock(ExpiredJwtException.class));
-
-        // Act
-        authService.logout(accessToken, refreshTokenRaw);
-
-        // Assert
-        assertTrue(refreshTokenEntity.getIsRevoked());
-        verify(refreshTokenRepository, times(1)).save(refreshTokenEntity);
-        verify(tokenBlacklistService, never()).blacklistToken(anyString(), anyLong());
-    }
-
-    @Test
-    void logout_WithInvalidRefreshToken_ShouldThrowException() {
-        // Arrange
-        when(validationService.validateRefreshToken(refreshTokenRaw)).thenThrow(new RuntimeException("Invalid refresh token"));
-
-        // Act & Assert
-        assertThrows(RuntimeException.class, () -> authService.logout(accessToken, refreshTokenRaw));
-        verify(refreshTokenRepository, never()).save(any());
-        verify(tokenBlacklistService, never()).blacklistToken(anyString(), anyLong());
+        verifyNoInteractions(refreshTokenRepository);
+        verify(tokenBlacklistService).blacklistToken(eq(accessToken), anyLong());
     }
 }

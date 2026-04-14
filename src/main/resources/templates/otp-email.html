@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Code</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 40px 20px; text-align: center; color: #ffffff; }
+        .content { padding: 40px; text-align: center; color: #374151; }
+        .otp-code { font-size: 48px; font-weight: 800; letter-spacing: 8px; color: #4f46e5; margin: 20px 0; padding: 20px; background-color: #f3f4f6; border-radius: 8px; display: inline-block; }
+        .footer { padding: 20px; text-align: center; font-size: 14px; color: #9ca3af; background-color: #f9fafb; }
+        h1 { margin: 0; font-size: 24px; }
+        p { line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Identity Verification</h1>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>Your one-time password (OTP) for Auth0 is below. It will expire in 15 minutes.</p>
+            <div class="otp-code" th:text="${otpCode}">123456</div>
+            <p>If you did not request this code, please ignore this email or contact support if you have concerns.</p>
+        </div>
+        <div class="footer">
+            &copy; 2026 Auth0 Service. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

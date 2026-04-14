@@ -16,16 +16,20 @@ import org.springframework.data.redis.stream.StreamMessageListenerContainer;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer.StreamMessageListenerContainerOptions;
 import org.springframework.data.redis.stream.Subscription;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Duration;
 
 @Configuration
 public class RedisStreamConfig {
 
-    public static final String REGISTRATION_STREAM_KEY = "auth:registration:stream";
-    public static final String REGISTRATION_GROUP = "registration-group";
+    @Value("${app.registration.stream-key}")
+    private String registrationStreamKey;
 
-    public static final String FORGOT_PASSWORD_STREAM_KEY = "auth:password-reset:stream";
+    @Value("${app.password-reset.stream-key}")
+    private String passwordResetStreamKey;
+
+    public static final String REGISTRATION_GROUP = "registration-group";
     public static final String FORGOT_PASSWORD_GROUP = "forgot-password-group";
 
 
@@ -57,7 +61,7 @@ public class RedisStreamConfig {
         StreamMessageListenerContainer<String, ObjectRecord<String, String>> container =
                 StreamMessageListenerContainer.create(factory, options);
 
-        container.receive(StreamOffset.create(REGISTRATION_STREAM_KEY, ReadOffset.lastConsumed()), listener);
+        container.receive(StreamOffset.create(registrationStreamKey, ReadOffset.lastConsumed()), listener);
 
 
         container.start();
@@ -78,7 +82,7 @@ public class RedisStreamConfig {
         StreamMessageListenerContainer<String, ObjectRecord<String, String>> container =
                 StreamMessageListenerContainer.create(factory, options);
 
-        container.receive(StreamOffset.create(FORGOT_PASSWORD_STREAM_KEY, ReadOffset.lastConsumed()), listener);
+        container.receive(StreamOffset.create(passwordResetStreamKey, ReadOffset.lastConsumed()), listener);
 
         container.start();
         return container;
