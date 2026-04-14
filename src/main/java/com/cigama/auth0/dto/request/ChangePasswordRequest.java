@@ -6,18 +6,21 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 @FieldsValueMatch(
-        field = "password",
+        field = "newPassword",
         fieldMatch = "confirmPassword",
-        message = "Passwords do not match."
+        message = "New passwords do not match."
 )
-public record ResetPasswordRequest(
-    @NotBlank(message = "Password is required")
+public record ChangePasswordRequest(
+    @NotBlank(message = "Current password is required")
+    String oldPassword,
+
+    @NotBlank(message = "New password is required")
     @ConfigurableLength(minKey = "app.policy.password-min-length")
     @Pattern(
             regexp = "^(?=.*[A-Z]).+$",
-            message = "Password must contain at least 1 uppercase letter"
+            message = "New password must contain at least 1 uppercase letter"
     )
-    String password,
+    String newPassword,
 
     @NotBlank(message = "Confirm password is required")
     String confirmPassword,

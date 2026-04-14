@@ -4,12 +4,14 @@ import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
+import com.cigama.auth0.dto.userdetails.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 
@@ -35,9 +37,16 @@ public interface AuthApi {
             @Parameter(hidden = true) HttpServletRequest servletRequest
     );
 
-    @Operation(summary = "Logout", description = "Revokes the given access and refresh tokens.")
+    @Operation(summary = "Logout", description = "Revokes the current session's refresh token and blacklists the access token.")
     @SecurityRequirement(name = "bearerAuth")
-    ResponseEntity<BaseResponse<Void>> logout(String bearerToken, RefreshTokenRequest request);
+    ResponseEntity<BaseResponse<Void>> logout(String bearerToken);
+
+    @Operation(summary = "Change Password", description = "Changes the password for the authenticated user.")
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<BaseResponse<Void>> changePassword(
+            @Parameter(hidden = true) @AuthenticationPrincipal CustomUserDetails userDetails,
+            ChangePasswordRequest request
+    );
 
     @Operation(summary = "Forgot Password", description = "Sends a password-reset OTP to the given email address if it is registered.")
     ResponseEntity<BaseResponse<Void>> forgotPassword(ForgotPasswordRequest request);

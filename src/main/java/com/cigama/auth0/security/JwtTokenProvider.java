@@ -91,16 +91,16 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Issues a short-lived JWT for the password-reset flow.
-     * Uses email as subject and adds a purpose claim to distinguish it from access tokens.
+     * Issues a short-lived JWT for specific action-based workflows (forgot password, email change, etc.)
+     * The 'purpose' claim identifies the specific action authorized by this token.
      */
-    public String generatePasswordResetToken(String email) {
+    public String generateActionToken(String subject, String purpose, long expirationMillis) {
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + passwordResetExpiration);
+        Date expiryDate = new Date(now.getTime() + expirationMillis);
 
         return Jwts.builder()
-                .claim("purpose", "PASSWORD_RESET")
-                .subject(email)
+                .claim("purpose", purpose)
+                .subject(subject)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(privateKey)

@@ -10,6 +10,7 @@ import com.cigama.auth0.entity.ClientApp;
 import com.cigama.auth0.entity.RefreshToken;
 import com.cigama.auth0.entity.Role;
 import com.cigama.auth0.entity.User;
+import com.cigama.auth0.entity.UserSecuritySetting;
 import com.cigama.auth0.event.dto.ForgotPasswordEvent;
 import com.cigama.auth0.event.dto.PendingRegistrationEvent;
 import com.cigama.auth0.exception.CustomException;
@@ -21,11 +22,14 @@ import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.AuthService;
+import com.cigama.auth0.service.EmailService;
 import com.cigama.auth0.service.TokenBlacklistService;
 import com.cigama.auth0.service.ValidationService;
 import com.cigama.auth0.util.RedisLuaScripts;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
@@ -51,7 +55,9 @@ import java.util.UUID;
 @Service
 public class AuthServiceImpl implements AuthService {
 
-    // --- Variables ---
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+
+    // --- Fields ---
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -63,6 +69,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordResetMapper passwordResetMapper;
     private final ClientAppRepository clientAppRepository;
     private final TokenBlacklistService tokenBlacklistService;
+    private final EmailService emailService;
     private final RedisTemplate<String, Object> streamRedisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -76,6 +83,7 @@ public class AuthServiceImpl implements AuthService {
                            PasswordResetMapper passwordResetMapper,
                            ClientAppRepository clientAppRepository,
                            TokenBlacklistService tokenBlacklistService,
+                           EmailService emailService,
                            RedisTemplate<String, Object> streamRedisTemplate,
                            ObjectMapper objectMapper) {
         this.userRepository = userRepository;
@@ -88,6 +96,7 @@ public class AuthServiceImpl implements AuthService {
         this.passwordResetMapper = passwordResetMapper;
         this.clientAppRepository = clientAppRepository;
         this.tokenBlacklistService = tokenBlacklistService;
+        this.emailService = emailService;
         this.streamRedisTemplate = streamRedisTemplate;
         this.objectMapper = objectMapper;
     }
@@ -116,6 +125,9 @@ public class AuthServiceImpl implements AuthService {
     @Value("${app.password-reset.lock-prefix-email}")
     private String passwordResetEmailLockPrefix;
 
+    @Value("${jwt.password-reset-expiration}")
+    private long passwordResetExpiration;
+
     // --- Public Methods ---
 
     /**
@@ -127,7 +139,7 @@ public class AuthServiceImpl implements AuthService {
         ClientApp clientApp = validationService.validateRegistration(request, apiKey);
         
         String generatedOtp = String.format("%06d", new SecureRandom().nextInt(999999));
-        String encodedPassword = passwordEncoder.encode(request.getPassword());
+        String encodedPassword = passwordEncoder.encode(request.password());
         String clientIdStr = clientApp != null ? clientApp.getClientId().toString() : null;
         
         PendingUserData pendingData = registrationMapper.toPendingUserData(request, encodedPassword, generatedOtp, clientIdStr);
@@ -139,8 +151,8 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize pending user data");
         }
         
-        String emailLockKey = emailLockPrefix + request.getEmail();
-        String usernameLockKey = usernameLockPrefix + request.getUsername();
+        String emailLockKey = emailLockPrefix + request.email();
+        String usernameLockKey = usernameLockPrefix + request.username();
         
         Long result = streamRedisTemplate.execute(
                 new DefaultRedisScript<>(RedisLuaScripts.SET_PENDING_USER, Long.class),
@@ -195,6 +207,7 @@ public class AuthServiceImpl implements AuthService {
         User user = registrationMapper.pendingToUser(pendingData);
         user.setRole(Role.UNAUTHORIZED_USER);
         user.setIsAuthorized(true);
+        user.setSecuritySetting(new UserSecuritySetting(user));
         
         if (pendingData.clientId() != null) {
             ClientApp clientApp = clientAppRepository.findById(UUID.fromString(pendingData.clientId())).orElse(null);
@@ -268,20 +281,42 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void logout(String accessToken, String refreshTokenRaw) {
-        RefreshToken refreshToken = validationService.validateRefreshToken(refreshTokenRaw);
-        refreshToken.setIsRevoked(true);
-        refreshTokenRepository.save(refreshToken);
-
+    public void logout(String accessToken) {
+        Claims claims;
         try {
-            long expirationTime = jwtTokenProvider.extractAllClaims(accessToken).getExpiration().getTime();
+            claims = jwtTokenProvider.extractAllClaims(accessToken);
+        } catch (Exception e) {
+            // If token is invalid or already expired, we can't extract device context,
+            // but the filter would have blocked this anyway.
+            return;
+        }
+
+        String userIdStr = claims.getSubject();
+        String deviceIdStr = (String) claims.get("deviceId");
+
+        if (userIdStr != null && deviceIdStr != null) {
+            UUID userId = UUID.fromString(userIdStr);
+            UUID deviceId = UUID.fromString(deviceIdStr);
+
+            // Revoke the specific refresh token associated with this device session
+            refreshTokenRepository.findByUserIdAndDeviceId(userId, deviceId)
+                    .ifPresent(token -> {
+                        token.setIsRevoked(true);
+                        refreshTokenRepository.save(token);
+                        log.info("Revoked refresh token for user {} on device {}", userId, deviceId);
+                    });
+        }
+
+        // Blacklist the access token for its remaining life
+        try {
+            long expirationTime = claims.getExpiration().getTime();
             long remainingTtl = expirationTime - System.currentTimeMillis();
 
             if (remainingTtl > 0) {
                 tokenBlacklistService.blacklistToken(accessToken, remainingTtl);
             }
         } catch (Exception e) {
-            // Token expired or invalid, no need to blacklist
+            log.warn("Failed to blacklist access token during logout: {}", e.getMessage());
         }
     }
 
@@ -294,14 +329,14 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public void forgotPassword(ForgotPasswordRequest request) {
-        if (validationService.validateUserExistsByEmail(request.getEmail()).isEmpty()) {
+        if (validationService.validateUserExistsByEmail(request.email()).isEmpty()) {
             return;
         }
 
         String otp = String.format("%06d", new SecureRandom().nextInt(999999));
-        String lockKey = passwordResetEmailLockPrefix + request.getEmail();
+        String lockKey = passwordResetEmailLockPrefix + request.email();
 
-        PendingPasswordResetData pendingData = new PendingPasswordResetData(request.getEmail(), otp);
+        PendingPasswordResetData pendingData = new PendingPasswordResetData(request.email(), otp);
 
         String payloadJson;
         try {
@@ -362,7 +397,7 @@ public class AuthServiceImpl implements AuthService {
 
         streamRedisTemplate.delete(lockKey);
 
-        String resetToken = jwtTokenProvider.generatePasswordResetToken(email);
+        String resetToken = jwtTokenProvider.generateActionToken(email, "PASSWORD_RESET", passwordResetExpiration);
         return new VerifyOtpResponse(resetToken);
     }
 
@@ -395,21 +430,44 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found"));
 
-        if (!request.getPassword().equals(request.getConfirmPassword())) {
-            throw new CustomException(HttpStatus.BAD_REQUEST, "Passwords do not match");
-        }
-
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setPassword(passwordEncoder.encode(request.password()));
         userRepository.save(user);
+
+        if (Boolean.TRUE.equals(request.logoutAllSessions())) {
+            refreshTokenRepository.deleteByUserId(user.getUserId());
+        }
 
         long remainingTtl = claims.getExpiration().getTime() - System.currentTimeMillis();
         if (remainingTtl > 0) {
             tokenBlacklistService.blacklistToken(resetToken, remainingTtl);
         }
+    }
 
-        if (Boolean.TRUE.equals(request.getRevokeOtherSessions())) {
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found"));
+
+        // Check if additional security requirements are enabled
+        if (Boolean.TRUE.equals(user.getSecuritySetting().getRequireOtpForPassword())) {
+            throw new CustomException(HttpStatus.FORBIDDEN, "OTP verification required to change password.");
+        }
+
+        // Validate current password
+        if (!passwordEncoder.matches(request.oldPassword(), user.getPassword())) {
+            throw new CustomException(HttpStatus.BAD_REQUEST, "Incorrect old password.");
+        }
+
+        // Update password and notify user
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        if (Boolean.TRUE.equals(request.logoutAllSessions())) {
             refreshTokenRepository.deleteByUserId(user.getUserId());
         }
+
+        emailService.sendPasswordChangedEmail(user.getEmail());
     }
 
     // --- Private Helpers ---

@@ -1,12 +1,10 @@
 package com.cigama.auth0.service;
 
-import com.cigama.auth0.dto.request.ClientMetadata;
-import com.cigama.auth0.dto.request.ForgotPasswordRequest;
-import com.cigama.auth0.dto.request.LoginRequest;
-import com.cigama.auth0.dto.request.RegisterRequest;
-import com.cigama.auth0.dto.request.ResetPasswordRequest;
+import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
+
+import java.util.UUID;
 
 public interface AuthService {
 
@@ -18,9 +16,11 @@ public interface AuthService {
 
     TokenResponse login(LoginRequest request, String apiKey, ClientMetadata metadata);
 
-    TokenResponse refresh(String refreshToken, ClientMetadata metadata);
+    TokenResponse refresh(String refreshTokenRaw, ClientMetadata metadata);
 
-    void logout(String accessToken, String refreshToken);
+    void logout(String accessToken);
+
+    void changePassword(UUID userId, ChangePasswordRequest request);
 
     // --- Password Reset ---
 
@@ -30,4 +30,3 @@ public interface AuthService {
 
     void resetPassword(String resetToken, ResetPasswordRequest request);
 }
-

@@ -45,8 +45,8 @@ public final class RequestUtils {
 
         // Priority 2: LoginRequest (if provided)
         if (loginRequest != null) {
-            if (deviceId == null) deviceId = loginRequest.getDeviceId();
-            if (deviceName == null) deviceName = loginRequest.getDeviceName();
+            if (deviceId == null) deviceId = loginRequest.deviceId();
+            if (deviceName == null) deviceName = loginRequest.deviceName();
         }
 
         // Fallback for Device ID

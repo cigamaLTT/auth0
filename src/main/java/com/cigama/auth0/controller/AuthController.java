@@ -5,72 +5,81 @@ import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
+import com.cigama.auth0.dto.userdetails.CustomUserDetails;
+import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.service.AuthService;
-import com.cigama.auth0.util.RequestUtils;
+import com.cigama.auth0.service.SessionService;
+import com.cigama.auth0.service.ValidationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController implements AuthApi {
 
-    // --- Variables ---
+    // --- Fields ---
 
     private final AuthService authService;
+    private final ValidationService validationService;
+    private final SessionService sessionService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService,
+                          ValidationService validationService,
+                          SessionService sessionService) {
         this.authService = authService;
+        this.validationService = validationService;
+        this.sessionService = sessionService;
     }
 
-    // --- Public Endpoints ---
-
+    // --- Public Methods ---
 
     @Override
     @PostMapping("/register")
     public ResponseEntity<BaseResponse<Void>> register(
             @Valid @RequestBody RegisterRequest request,
-            @RequestHeader(value = "X-API-Key", required = false) String apiKey
+            @RequestHeader("X-Api-Key") String apiKey
     ) {
         authService.register(request, apiKey);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-                new BaseResponse<>(HttpStatus.ACCEPTED.value(), "Registration initialized. Please verify your OTP.", null)
+        return ResponseEntity.ok(
+                new BaseResponse<>(HttpStatus.OK.value(), "OTP sent to your email", null)
         );
     }
 
     @Override
     @PostMapping("/verify-otp")
-    public ResponseEntity<BaseResponse<?>> verifyOtp(
-            @Valid @RequestBody VerifyOtpRequest request
-    ) {
-        if (request.getPurpose() == OtpPurpose.REGISTER) {
-            authService.verifyOtp(request.getEmail(), request.getOtpCode());
+    public ResponseEntity<BaseResponse<?>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        if (OtpPurpose.REGISTER.equals(request.purpose())) {
+            authService.verifyOtp(request.email(), request.otpCode());
             return ResponseEntity.ok(
-                    new BaseResponse<>(HttpStatus.OK.value(), "OTP verified successfully. Please proceed to login.", null)
+                    new BaseResponse<>(HttpStatus.OK.value(), "Account verified successfully", null)
+            );
+        } else if (OtpPurpose.FORGOT_PASSWORD.equals(request.purpose())) {
+            VerifyOtpResponse response = authService.verifyOtpForPasswordReset(request.email(), request.otpCode());
+            return ResponseEntity.ok(
+                    new BaseResponse<>(HttpStatus.OK.value(), "OTP verified successfully", response)
             );
         }
-        if (request.getPurpose() == OtpPurpose.FORGOT_PASSWORD) {
-            VerifyOtpResponse result = authService.verifyOtpForPasswordReset(request.getEmail(), request.getOtpCode());
-            return ResponseEntity.ok(
-                    new BaseResponse<>(HttpStatus.OK.value(), "OTP verified. Use the reset token to set your new password.", result)
-            );
-        }
-        return ResponseEntity.badRequest().body(
-                new BaseResponse<>(HttpStatus.BAD_REQUEST.value(), "Unsupported OTP purpose", null)
-        );
+        throw new CustomException(HttpStatus.BAD_REQUEST, "Invalid OTP purpose");
     }
 
     @Override
     @PostMapping("/login")
     public ResponseEntity<BaseResponse<TokenResponse>> login(
             @Valid @RequestBody LoginRequest request,
-            @RequestHeader(value = "X-API-Key", required = false) String apiKey,
+            @RequestHeader("X-Api-Key") String apiKey,
             HttpServletRequest servletRequest
     ) {
-        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, request);
+        ClientMetadata metadata = new ClientMetadata(
+                servletRequest.getRemoteAddr(),
+                servletRequest.getHeader("User-Agent")
+        );
         TokenResponse response = authService.login(request, apiKey, metadata);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Login successful", response)
@@ -83,8 +92,11 @@ public class AuthController implements AuthApi {
             @Valid @RequestBody RefreshTokenRequest request,
             HttpServletRequest servletRequest
     ) {
-        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, null);
-        TokenResponse response = authService.refresh(request.getRefreshToken(), metadata);
+        ClientMetadata metadata = new ClientMetadata(
+                servletRequest.getRemoteAddr(),
+                servletRequest.getHeader("User-Agent")
+        );
+        TokenResponse response = authService.refresh(request.refreshToken(), metadata);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Token refreshed successfully", response)
         );
@@ -93,13 +105,24 @@ public class AuthController implements AuthApi {
     @Override
     @PostMapping("/logout")
     public ResponseEntity<BaseResponse<Void>> logout(
-            @RequestHeader("Authorization") String bearerToken,
-            @Valid @RequestBody RefreshTokenRequest request
+            @RequestHeader("Authorization") String bearerToken
     ) {
         String accessToken = bearerToken.substring(7);
-        authService.logout(accessToken, request.getRefreshToken());
+        authService.logout(accessToken);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Logged out successfully", null)
+        );
+    }
+
+    @Override
+    @PostMapping("/change-password")
+    public ResponseEntity<BaseResponse<Void>> changePassword(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        authService.changePassword(UUID.fromString(userDetails.getUserId()), request);
+        return ResponseEntity.ok(
+                new BaseResponse<>(HttpStatus.OK.value(), "Password changed successfully", null)
         );
     }
 
@@ -107,12 +130,10 @@ public class AuthController implements AuthApi {
 
     @Override
     @PostMapping("/forgot-password")
-    public ResponseEntity<BaseResponse<Void>> forgotPassword(
-            @Valid @RequestBody ForgotPasswordRequest request
-    ) {
+    public ResponseEntity<BaseResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-                new BaseResponse<>(HttpStatus.ACCEPTED.value(), "If this email is registered, you will receive a password reset OTP.", null)
+        return ResponseEntity.ok(
+                new BaseResponse<>(HttpStatus.OK.value(), "Password reset OTP sent to your email", null)
         );
     }
 
@@ -125,7 +146,7 @@ public class AuthController implements AuthApi {
         String resetToken = bearerToken.substring(7);
         authService.resetPassword(resetToken, request);
         return ResponseEntity.ok(
-                new BaseResponse<>(HttpStatus.OK.value(), "Password reset successfully. Please log in again.", null)
+                new BaseResponse<>(HttpStatus.OK.value(), "Password reset successfully", null)
         );
     }
 }
