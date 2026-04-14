@@ -89,8 +89,12 @@ public class ValidationServiceImpl implements ValidationService {
             return null;
         }
         String hashedKey = hashValue(apiKey);
+        log.info("Validating API Key: [{}], Hash: [{}]", apiKey, hashedKey);
         return clientAppRepository.findByClientToken(hashedKey)
-                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid API Key"));
+                .orElseThrow(() -> {
+                    log.error("Invalid API Key Hash: {}", hashedKey);
+                    return new CustomException(HttpStatus.UNAUTHORIZED, "Invalid API Key");
+                });
     }
 
     /**

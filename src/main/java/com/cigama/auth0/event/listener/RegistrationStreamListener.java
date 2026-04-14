@@ -1,6 +1,7 @@
 package com.cigama.auth0.event.listener;
 
 import com.cigama.auth0.event.dto.PendingRegistrationEvent;
+import com.cigama.auth0.event.dto.RegistrationSuccessEvent;
 import com.cigama.auth0.service.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,12 +10,14 @@ import org.springframework.data.redis.connection.stream.ObjectRecord;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.stream.StreamListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
 /**
  * Listener for Registration-related events from Redis Streams.
+ * Processes both pending registration (OTP) and successful registration (Welcome).
  */
 @Component
 public class RegistrationStreamListener
@@ -41,26 +44,42 @@ public class RegistrationStreamListener
 
     // --- Methods ---
 
+    /**
+     * Dispatcher for registration stream events.
+     */
     @Override
     public void onMessage(ObjectRecord<String, String> message) {
         String eventJson = message.getValue();
-        log.info("Received registration event: {}", eventJson);
+        log.info("Received registration stream event: {}", eventJson);
         
         try {
-            PendingRegistrationEvent event = objectMapper.readValue(eventJson, PendingRegistrationEvent.class);
-            log.info("Processing pending registration for: {}", event.email());
+            JsonNode node = objectMapper.readTree(eventJson);
             
-            try {
-                emailService.sendOtpEmail(event.email(), event.otpCode());
-            } catch (Exception e) {
-                log.error("Failed to send OTP email: {}. Reverting Redis locks.", e.getMessage());
-
-                String emailLockKey = event.registrationId();
-                String usernameLockKey = usernameLockPrefix + event.username();
-                streamRedisTemplate.delete(List.of(emailLockKey, usernameLockKey));
+            // Distinguish between Pending and Success events
+            if (node.has("registrationId")) {
+                handlePendingRegistration(objectMapper.treeToValue(node, PendingRegistrationEvent.class));
+            } else if (node.has("username") && !node.has("otpCode")) {
+                handleRegistrationSuccess(objectMapper.treeToValue(node, RegistrationSuccessEvent.class));
             }
         } catch (Exception e) {
-            log.error("Invalid registration event data: {}", e.getMessage());
+            log.error("Failed to process registration event: {}", e.getMessage());
         }
+    }
+
+    private void handlePendingRegistration(PendingRegistrationEvent event) {
+        log.info("Processing pending registration for: {}", event.email());
+        try {
+            emailService.sendOtpEmail(event.email(), event.otpCode());
+        } catch (Exception e) {
+            log.error("Failed to send OTP email: {}. Reverting Redis locks.", e.getMessage());
+            String emailLockKey = event.registrationId();
+            String usernameLockKey = usernameLockPrefix + event.username();
+            streamRedisTemplate.delete(List.of(emailLockKey, usernameLockKey));
+        }
+    }
+
+    private void handleRegistrationSuccess(RegistrationSuccessEvent event) {
+        log.info("Processing registration success for: {}", event.email());
+        emailService.sendWelcomeEmail(event.email(), event.username());
     }
 }

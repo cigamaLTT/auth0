@@ -8,6 +8,7 @@ import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.dto.userdetails.CustomUserDetails;
 import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.service.AuthService;
+import com.cigama.auth0.service.SecuritySettingService;
 import com.cigama.auth0.service.SessionService;
 import com.cigama.auth0.service.ValidationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,13 +30,16 @@ public class AuthController implements AuthApi {
     private final AuthService authService;
     private final ValidationService validationService;
     private final SessionService sessionService;
+    private final SecuritySettingService securitySettingService;
 
     public AuthController(AuthService authService,
                           ValidationService validationService,
-                          SessionService sessionService) {
+                          SessionService sessionService,
+                          SecuritySettingService securitySettingService) {
         this.authService = authService;
         this.validationService = validationService;
         this.sessionService = sessionService;
+        this.securitySettingService = securitySettingService;
     }
 
     // --- Public Methods ---
@@ -147,6 +151,35 @@ public class AuthController implements AuthApi {
         authService.resetPassword(resetToken, request);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Password reset successfully", null)
+        );
+    }
+
+    @Override
+    @PostMapping("/security/request-otp")
+    public ResponseEntity<BaseResponse<Void>> requestSecuritySettingUpdate(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam String settingName
+    ) {
+        securitySettingService.requestSecuritySettingUpdate(UUID.fromString(userDetails.getUserId()), settingName);
+        return ResponseEntity.ok(
+                new BaseResponse<>(HttpStatus.OK.value(), "Security setting OTP sent to your email", null)
+        );
+    }
+
+    @Override
+    @PostMapping("/security/verify-update")
+    public ResponseEntity<BaseResponse<Void>> verifySecuritySettingUpdate(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody VerifySecuritySettingRequest request
+    ) {
+        securitySettingService.verifySecuritySettingUpdate(
+                UUID.fromString(userDetails.getUserId()),
+                request.settingName(),
+                request.targetValue(),
+                request.otpCode()
+        );
+        return ResponseEntity.ok(
+                new BaseResponse<>(HttpStatus.OK.value(), "Security setting updated successfully", null)
         );
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import jakarta.validation.Valid;
 
 @Tag(name = "Authentication", description = "Endpoints for user registration, login, and token management")
 public interface AuthApi {
@@ -54,4 +55,18 @@ public interface AuthApi {
     @Operation(summary = "Reset Password", description = "Resets the user's password using the password-reset token obtained from OTP verification.")
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<BaseResponse<Void>> resetPassword(String bearerToken, ResetPasswordRequest request);
+
+    @Operation(summary = "Request Security Setting Update", description = "Requests an OTP to change a boolean security setting.")
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<BaseResponse<Void>> requestSecuritySettingUpdate(
+            @Parameter(hidden = true) @AuthenticationPrincipal CustomUserDetails userDetails,
+            String settingName
+    );
+
+    @Operation(summary = "Verify Security Setting Update", description = "Verifies OTP and updates the security setting.")
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<BaseResponse<Void>> verifySecuritySettingUpdate(
+            @Parameter(hidden = true) @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody VerifySecuritySettingRequest request
+    );
 }
