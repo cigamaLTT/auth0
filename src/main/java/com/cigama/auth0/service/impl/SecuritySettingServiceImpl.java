@@ -1,8 +1,10 @@
 package com.cigama.auth0.service.impl;
 
 import com.cigama.auth0.entity.User;
-import com.cigama.auth0.entity.UserSecuritySetting;
+import com.cigama.auth0.entity.SecuritySettingType;
 import com.cigama.auth0.event.dto.SecuritySettingOtpEvent;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.service.SecuritySettingService;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -34,8 +37,8 @@ public class SecuritySettingServiceImpl implements SecuritySettingService {
     private String securityStreamKey;
 
     public SecuritySettingServiceImpl(UserRepository userRepository,
-                                      RedisTemplate<String, Object> streamRedisTemplate,
-                                      ObjectMapper objectMapper) {
+            @Lazy @Qualifier("streamRedisTemplate") RedisTemplate<String, Object> streamRedisTemplate,
+            ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.streamRedisTemplate = streamRedisTemplate;
         this.objectMapper = objectMapper;
@@ -50,9 +53,10 @@ public class SecuritySettingServiceImpl implements SecuritySettingService {
         String redisKey = "auth:setting_otp:" + userId + ":" + settingName;
         log.info("Requesting security setting update for user: {}, setting: {}, OTP: {}", userId, settingName, otpCode);
 
-        streamRedisTemplate.opsForValue().set(redisKey, otpCode, java.time.Duration.ofMinutes(15));
+        streamRedisTemplate.opsForValue().set(redisKey, otpCode, Duration.ofMinutes(15));
 
-        publishToStream(securityStreamKey, new SecuritySettingOtpEvent(user.getEmail(), settingName, otpCode, LocalDateTime.now()));
+        publishToStream(securityStreamKey,
+                new SecuritySettingOtpEvent(user.getEmail(), settingName, otpCode, LocalDateTime.now()));
     }
 
     @Override
@@ -68,13 +72,7 @@ public class SecuritySettingServiceImpl implements SecuritySettingService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found"));
 
-        UserSecuritySetting setting = user.getSecuritySetting();
-        switch (settingName.toUpperCase()) {
-            case "REQUIRE_OTP_FOR_PASSWORD" -> setting.setRequireOtpForPassword(targetValue);
-            case "REQUIRE_OTP_FOR_EMAIL" -> setting.setRequireOtpForEmail(targetValue);
-            case "REQUIRE_OTP_FOR_PHONE" -> setting.setRequireOtpForPhone(targetValue);
-            default -> throw new CustomException(HttpStatus.BAD_REQUEST, "Unknown security setting: " + settingName);
-        }
+        SecuritySettingType.fromName(settingName).setValue(user.getSecuritySetting(), targetValue);
 
         userRepository.save(user);
         streamRedisTemplate.delete(redisKey);
@@ -85,21 +83,14 @@ public class SecuritySettingServiceImpl implements SecuritySettingService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "User not found"));
 
-        UserSecuritySetting setting = user.getSecuritySetting();
-        return switch (settingName.toUpperCase()) {
-            case "REQUIRE_OTP_FOR_PASSWORD" -> Boolean.TRUE.equals(setting.getRequireOtpForPassword());
-            case "REQUIRE_OTP_FOR_EMAIL" -> Boolean.TRUE.equals(setting.getRequireOtpForEmail());
-            case "REQUIRE_OTP_FOR_PHONE" -> Boolean.TRUE.equals(setting.getRequireOtpForPhone());
-            default -> false;
-        };
+        return SecuritySettingType.fromName(settingName).getValue(user.getSecuritySetting());
     }
 
     private void publishToStream(String streamKey, Object event) {
         try {
             String eventJson = objectMapper.writeValueAsString(event);
             streamRedisTemplate.opsForStream().add(
-                    StreamRecords.newRecord().in(streamKey).ofObject(eventJson).withId(RecordId.autoGenerate())
-            );
+                    StreamRecords.newRecord().in(streamKey).ofObject(eventJson).withId(RecordId.autoGenerate()));
         } catch (Exception e) {
             log.error("Failed to publish event to {}: {}", streamKey, e.getMessage());
         }

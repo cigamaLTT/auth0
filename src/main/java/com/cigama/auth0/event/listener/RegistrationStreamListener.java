@@ -12,12 +12,15 @@ import org.springframework.data.redis.stream.StreamListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.util.List;
 
 /**
  * Listener for Registration-related events from Redis Streams.
- * Processes both pending registration (OTP) and successful registration (Welcome).
+ * Processes both pending registration (OTP) and successful registration
+ * (Welcome).
  */
 @Component
 public class RegistrationStreamListener
@@ -32,8 +35,8 @@ public class RegistrationStreamListener
     private final ObjectMapper objectMapper;
 
     public RegistrationStreamListener(EmailService emailService,
-                                      RedisTemplate<String, Object> streamRedisTemplate,
-                                      ObjectMapper objectMapper) {
+            @Lazy @Qualifier("streamRedisTemplate") RedisTemplate<String, Object> streamRedisTemplate,
+            ObjectMapper objectMapper) {
         this.emailService = emailService;
         this.streamRedisTemplate = streamRedisTemplate;
         this.objectMapper = objectMapper;

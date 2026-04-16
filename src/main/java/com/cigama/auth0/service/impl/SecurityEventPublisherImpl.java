@@ -10,6 +10,8 @@ import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.time.LocalDateTime;
 
@@ -24,7 +26,9 @@ public class SecurityEventPublisherImpl implements SecurityEventPublisher {
     @Value("${app.security.stream-key:auth:security:stream}")
     private String securityStreamKey;
 
-    public SecurityEventPublisherImpl(RedisTemplate<String, Object> streamRedisTemplate, ObjectMapper objectMapper) {
+    public SecurityEventPublisherImpl(
+            @Lazy @Qualifier("streamRedisTemplate") RedisTemplate<String, Object> streamRedisTemplate,
+            ObjectMapper objectMapper) {
         this.streamRedisTemplate = streamRedisTemplate;
         this.objectMapper = objectMapper;
     }
@@ -39,8 +43,7 @@ public class SecurityEventPublisherImpl implements SecurityEventPublisher {
         try {
             String eventJson = objectMapper.writeValueAsString(event);
             streamRedisTemplate.opsForStream().add(
-                    StreamRecords.newRecord().in(streamKey).ofObject(eventJson).withId(RecordId.autoGenerate())
-            );
+                    StreamRecords.newRecord().in(streamKey).ofObject(eventJson).withId(RecordId.autoGenerate()));
         } catch (Exception e) {
             log.error("Failed to publish security event to {}: {}", streamKey, e.getMessage());
         }
