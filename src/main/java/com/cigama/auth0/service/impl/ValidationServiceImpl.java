@@ -10,6 +10,7 @@ import com.cigama.auth0.repository.ClientAppRepository;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.repository.UserRepository;
 import com.cigama.auth0.service.ValidationService;
+import com.cigama.auth0.util.HashUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,7 +89,7 @@ public class ValidationServiceImpl implements ValidationService {
         if (apiKey == null || apiKey.isBlank()) {
             return null;
         }
-        String hashedKey = hashValue(apiKey);
+        String hashedKey = HashUtils.hashValue(apiKey);
         log.info("Validating API Key: [{}], Hash: [{}]", apiKey, hashedKey);
         return clientAppRepository.findByClientToken(hashedKey)
                 .orElseThrow(() -> {
@@ -107,7 +108,7 @@ public class ValidationServiceImpl implements ValidationService {
             throw new CustomException(HttpStatus.BAD_REQUEST, "Refresh token is required");
         }
 
-        String hashedToken = hashValue(token);
+        String hashedToken = HashUtils.hashValue(token);
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hashedToken)
                 .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
 
@@ -129,18 +130,6 @@ public class ValidationServiceImpl implements ValidationService {
         }
 
         return refreshToken;
-    }
-
-    // --- Private Helpers ---
-
-    private String hashValue(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().withLowerCase().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "SHA-256 algorithm not found");
-        }
     }
 
     @Override

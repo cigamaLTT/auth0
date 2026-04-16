@@ -1,5 +1,6 @@
 package com.cigama.auth0.controller;
 
+import com.cigama.auth0.entity.SecuritySettingType;
 import com.cigama.auth0.controller.doc.AuthApi;
 import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
@@ -11,6 +12,9 @@ import com.cigama.auth0.service.AuthService;
 import com.cigama.auth0.service.SecuritySettingService;
 import com.cigama.auth0.service.SessionService;
 import com.cigama.auth0.service.ValidationService;
+import com.cigama.auth0.util.Constants;
+import com.cigama.auth0.util.RequestUtils;
+import com.cigama.auth0.util.SecurityUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -80,10 +84,7 @@ public class AuthController implements AuthApi {
             @RequestHeader("X-Api-Key") String apiKey,
             HttpServletRequest servletRequest
     ) {
-        ClientMetadata metadata = new ClientMetadata(
-                servletRequest.getRemoteAddr(),
-                servletRequest.getHeader("User-Agent")
-        );
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, request);
         TokenResponse response = authService.login(request, apiKey, metadata);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Login successful", response)
@@ -96,10 +97,7 @@ public class AuthController implements AuthApi {
             @Valid @RequestBody RefreshTokenRequest request,
             HttpServletRequest servletRequest
     ) {
-        ClientMetadata metadata = new ClientMetadata(
-                servletRequest.getRemoteAddr(),
-                servletRequest.getHeader("User-Agent")
-        );
+        ClientMetadata metadata = RequestUtils.extractMetadata(servletRequest, null);
         TokenResponse response = authService.refresh(request.refreshToken(), metadata);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Token refreshed successfully", response)
@@ -109,9 +107,9 @@ public class AuthController implements AuthApi {
     @Override
     @PostMapping("/logout")
     public ResponseEntity<BaseResponse<Void>> logout(
-            @RequestHeader("Authorization") String bearerToken
+            @RequestHeader(Constants.AUTHORIZATION_HEADER) String bearerToken
     ) {
-        String accessToken = bearerToken.substring(7);
+        String accessToken = SecurityUtils.extractToken(bearerToken);
         authService.logout(accessToken);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Logged out successfully", null)
@@ -124,7 +122,7 @@ public class AuthController implements AuthApi {
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @Valid @RequestBody ChangePasswordRequest request
     ) {
-        authService.changePassword(UUID.fromString(userDetails.getUserId()), request);
+        authService.changePassword(SecurityUtils.getUserIdAsUuid(userDetails), request);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Password changed successfully", null)
         );
@@ -144,10 +142,10 @@ public class AuthController implements AuthApi {
     @Override
     @PostMapping("/reset-password")
     public ResponseEntity<BaseResponse<Void>> resetPassword(
-            @RequestHeader("Authorization") String bearerToken,
+            @RequestHeader(Constants.AUTHORIZATION_HEADER) String bearerToken,
             @Valid @RequestBody ResetPasswordRequest request
     ) {
-        String resetToken = bearerToken.substring(7);
+        String resetToken = SecurityUtils.extractToken(bearerToken);
         authService.resetPassword(resetToken, request);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Password reset successfully", null)
@@ -158,9 +156,9 @@ public class AuthController implements AuthApi {
     @PostMapping("/security/request-otp")
     public ResponseEntity<BaseResponse<Void>> requestSecuritySettingUpdate(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam String settingName
+            @RequestParam SecuritySettingType settingType
     ) {
-        securitySettingService.requestSecuritySettingUpdate(UUID.fromString(userDetails.getUserId()), settingName);
+        securitySettingService.requestSecuritySettingUpdate(SecurityUtils.getUserIdAsUuid(userDetails), settingType);
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Security setting OTP sent to your email", null)
         );
@@ -173,8 +171,8 @@ public class AuthController implements AuthApi {
             @Valid @RequestBody VerifySecuritySettingRequest request
     ) {
         securitySettingService.verifySecuritySettingUpdate(
-                UUID.fromString(userDetails.getUserId()),
-                request.settingName(),
+                SecurityUtils.getUserIdAsUuid(userDetails),
+                request.settingType(),
                 request.targetValue(),
                 request.otpCode()
         );

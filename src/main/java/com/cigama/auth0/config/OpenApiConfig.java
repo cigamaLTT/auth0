@@ -1,5 +1,6 @@
 package com.cigama.auth0.config;
 
+import com.cigama.auth0.util.Constants;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
@@ -32,7 +33,7 @@ public class OpenApiConfig {
         return (operation, handlerMethod) -> {
             if (operation.getParameters() != null) {
                 operation.getParameters().removeIf(p ->
-                        "header".equalsIgnoreCase(p.getIn()) && "Authorization".equalsIgnoreCase(p.getName())
+                        "header".equalsIgnoreCase(p.getIn()) && Constants.AUTHORIZATION_HEADER.equalsIgnoreCase(p.getName())
                 );
             }
             return operation;

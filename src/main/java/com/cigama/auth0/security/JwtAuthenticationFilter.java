@@ -3,6 +3,8 @@ package com.cigama.auth0.security;
 import com.cigama.auth0.dto.JwtPayload;
 import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.service.TokenBlacklistService;
+import com.cigama.auth0.util.Constants;
+import com.cigama.auth0.util.SecurityUtils;
 import tools.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -77,9 +79,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
 
                     // Set request attributes for downstream use
-                    request.setAttribute("userId", payload.getUserId());
+                    request.setAttribute(Constants.CLAIM_USER_ID, payload.getUserId());
                     if (payload.getDeviceId() != null) {
-                        request.setAttribute("deviceId", payload.getDeviceId());
+                        request.setAttribute(Constants.CLAIM_DEVICE_ID, payload.getDeviceId());
                     }
                 }
             } catch (ExpiredJwtException ex) {
@@ -98,7 +100,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 request.setAttribute("jwtExceptionType", "ILLEGAL_ARGUMENT");
                 request.setAttribute("jwtExceptionMessage", "Token argument is invalid");
             } catch (Exception ex) {
-                request.setAttribute("jwtExceptionType", "UNKNOWN");
+                request.setAttribute("jwtExceptionType", Constants.UNKNOWN.toUpperCase());
                 request.setAttribute("jwtExceptionMessage", "An unknown error occurred while validating the token");
             }
         }
@@ -109,10 +111,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // --- Private Helpers ---
 
     private String getJwtFromRequest(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
-        }
-        return null;
+        String bearerToken = request.getHeader(Constants.AUTHORIZATION_HEADER);
+        return SecurityUtils.extractToken(bearerToken);
     }
 }

@@ -3,6 +3,7 @@ package com.cigama.auth0.config;
 import com.cigama.auth0.security.JwtAuthenticationEntryPoint;
 import com.cigama.auth0.security.JwtAuthenticationFilter;
 import com.cigama.auth0.security.LocalOnlyFilter;
+import com.cigama.auth0.util.Constants;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -78,7 +79,14 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(origins);
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "X-API-Key", "X-Device-Id", "X-Device-Name"));
+        configuration.setAllowedHeaders(Arrays.asList(
+                Constants.AUTHORIZATION_HEADER,
+                "Content-Type",
+                "Accept",
+                Constants.API_KEY_HEADER,
+                Constants.DEVICE_ID_HEADER,
+                Constants.DEVICE_NAME_HEADER
+        ));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

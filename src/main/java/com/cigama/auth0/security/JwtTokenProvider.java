@@ -2,6 +2,7 @@ package com.cigama.auth0.security;
 
 import com.cigama.auth0.dto.JwtPayload;
 import com.cigama.auth0.exception.CustomException;
+import com.cigama.auth0.util.Constants;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
@@ -99,7 +100,7 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + expirationMillis);
 
         return Jwts.builder()
-                .claim("purpose", purpose)
+                .claim(Constants.CLAIM_PURPOSE, purpose)
                 .subject(subject)
                 .issuedAt(now)
                 .expiration(expiryDate)

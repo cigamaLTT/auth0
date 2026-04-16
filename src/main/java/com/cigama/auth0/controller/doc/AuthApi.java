@@ -1,5 +1,6 @@
 package com.cigama.auth0.controller.doc;
 
+import com.cigama.auth0.entity.SecuritySettingType;
 import com.cigama.auth0.dto.request.*;
 import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.TokenResponse;
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.validation.Valid;
 
 @Tag(name = "Authentication", description = "Endpoints for user registration, login, and token management")
@@ -60,7 +62,7 @@ public interface AuthApi {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<BaseResponse<Void>> requestSecuritySettingUpdate(
             @Parameter(hidden = true) @AuthenticationPrincipal CustomUserDetails userDetails,
-            String settingName
+            @RequestParam SecuritySettingType settingType
     );
 
     @Operation(summary = "Verify Security Setting Update", description = "Verifies OTP and updates the security setting.")

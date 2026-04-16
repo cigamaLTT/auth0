@@ -4,6 +4,7 @@ import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.response.SessionResponse;
 import com.cigama.auth0.dto.userdetails.CustomUserDetails;
 import com.cigama.auth0.service.SessionService;
+import com.cigama.auth0.util.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,7 +33,7 @@ public class SessionController {
     public ResponseEntity<BaseResponse<List<SessionResponse>>> getSessions(
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        UUID userId = UUID.fromString(userDetails.getUserId());
+        UUID userId = SecurityUtils.getUserIdAsUuid(userDetails);
         List<SessionResponse> sessions = sessionService.getSessions(userId);
         
         return ResponseEntity.ok(
@@ -46,7 +47,7 @@ public class SessionController {
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable UUID deviceId
     ) {
-        UUID userId = UUID.fromString(userDetails.getUserId());
+        UUID userId = SecurityUtils.getUserIdAsUuid(userDetails);
         sessionService.revokeSession(userId, deviceId);
         
         return ResponseEntity.ok(

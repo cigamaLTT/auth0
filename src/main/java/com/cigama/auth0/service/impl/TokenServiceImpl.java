@@ -11,6 +11,8 @@ import com.cigama.auth0.mapper.UserMapper;
 import com.cigama.auth0.repository.RefreshTokenRepository;
 import com.cigama.auth0.security.JwtTokenProvider;
 import com.cigama.auth0.service.TokenService;
+import com.cigama.auth0.util.Constants;
+import com.cigama.auth0.util.HashUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -55,7 +57,7 @@ public class TokenServiceImpl implements TokenService {
         String accessToken = jwtTokenProvider.generateAccessToken(jwtPayload);
 
         String refreshTokenRaw = generateSecureToken();
-        String refreshTokenHash = hashValue(refreshTokenRaw);
+        String refreshTokenHash = HashUtils.hashValue(refreshTokenRaw);
 
         RefreshToken refreshTokenEntity = new RefreshToken();
         refreshTokenEntity.setUserId(user.getUserId());
@@ -74,7 +76,7 @@ public class TokenServiceImpl implements TokenService {
 
         refreshTokenRepository.save(refreshTokenEntity);
 
-        return new TokenResponse(accessToken, refreshTokenRaw, "Bearer", refreshExpiration);
+        return new TokenResponse(accessToken, refreshTokenRaw, Constants.BEARER_PREFIX.trim(), refreshExpiration);
     }
 
     @Override
@@ -98,15 +100,5 @@ public class TokenServiceImpl implements TokenService {
         byte[] randomBytes = new byte[32];
         new SecureRandom().nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-    }
-
-    private String hashValue(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().withLowerCase().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "Hashing failed");
-        }
     }
 }

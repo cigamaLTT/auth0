@@ -5,6 +5,7 @@ import com.cigama.auth0.dto.cache.PendingPasswordResetData;
 import com.cigama.auth0.dto.cache.PendingUserData;
 import com.cigama.auth0.dto.response.VerifyOtpResponse;
 import com.cigama.auth0.entity.RefreshToken;
+import com.cigama.auth0.entity.SecuritySettingType;
 import com.cigama.auth0.entity.User;
 import com.cigama.auth0.entity.Role;
 import com.cigama.auth0.entity.UserSecuritySetting;
@@ -259,7 +260,7 @@ class AuthServiceImplTest {
         setting.setRequireOtpForPassword(true);
         user.setSecuritySetting(setting);
 
-        when(securitySettingService.isOtpRequired(userId, "REQUIRE_OTP_FOR_PASSWORD")).thenReturn(true);
+        when(securitySettingService.isOtpRequired(userId, SecuritySettingType.PASSWORD)).thenReturn(true);
 
         // Act & Assert
         assertThrows(RuntimeException.class, () -> authService.changePassword(userId, request));
@@ -272,7 +273,7 @@ class AuthServiceImplTest {
         ChangePasswordRequest request = new ChangePasswordRequest("wrongPass", "newPass", "newPass", false);
         User user = new User();
         user.setPassword("hashedOldPass");
-        when(securitySettingService.isOtpRequired(userId, "REQUIRE_OTP_FOR_PASSWORD")).thenReturn(false);
+        when(securitySettingService.isOtpRequired(userId, SecuritySettingType.PASSWORD)).thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrongPass", "hashedOldPass")).thenReturn(false);
 

@@ -4,6 +4,7 @@ import com.cigama.auth0.dto.cache.PendingPasswordResetData;
 import com.cigama.auth0.dto.cache.PendingUserData;
 import com.cigama.auth0.exception.CustomException;
 import com.cigama.auth0.service.OtpService;
+import com.cigama.auth0.util.OtpUtils;
 import com.cigama.auth0.util.RedisLuaScripts;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -93,7 +94,7 @@ public class OtpServiceImpl implements OtpService {
 
     @Override
     public String generateAndSavePasswordResetOtp(String email) {
-        String otp = String.format("%06d", new SecureRandom().nextInt(999999));
+        String otp = OtpUtils.generateOtp();
         String lockKey = passwordResetEmailLockPrefix + email;
         PendingPasswordResetData pendingData = new PendingPasswordResetData(email, otp);
 

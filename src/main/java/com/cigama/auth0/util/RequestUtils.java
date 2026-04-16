@@ -22,7 +22,7 @@ public final class RequestUtils {
      */
     public static ClientMetadata extractMetadata(HttpServletRequest request, LoginRequest loginRequest) {
         String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+        if (ip == null || ip.isEmpty() || Constants.UNKNOWN.equalsIgnoreCase(ip)) {
             ip = request.getRemoteAddr();
         }
 
@@ -35,13 +35,13 @@ public final class RequestUtils {
         String deviceName = null;
 
         // Priority 1: Headers (X-Device-Id)
-        String headerDeviceId = request.getHeader("X-Device-Id");
+        String headerDeviceId = request.getHeader(Constants.DEVICE_ID_HEADER);
         if (headerDeviceId != null && !headerDeviceId.isEmpty()) {
             try {
                 deviceId = UUID.fromString(headerDeviceId);
             } catch (IllegalArgumentException ignored) {}
         }
-        deviceName = request.getHeader("X-Device-Name");
+        deviceName = request.getHeader(Constants.DEVICE_NAME_HEADER);
 
         // Priority 2: LoginRequest (if provided)
         if (loginRequest != null) {
@@ -56,7 +56,7 @@ public final class RequestUtils {
 
         return new ClientMetadata(
                 ip,
-                request.getHeader("User-Agent"),
+                request.getHeader(Constants.USER_AGENT_HEADER),
                 deviceId,
                 deviceName
         );

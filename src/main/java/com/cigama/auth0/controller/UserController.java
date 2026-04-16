@@ -6,6 +6,7 @@ import com.cigama.auth0.dto.response.BaseResponse;
 import com.cigama.auth0.dto.userdetails.CustomUserDetails;
 import com.cigama.auth0.service.AuthService;
 import com.cigama.auth0.service.SecuritySettingService;
+import com.cigama.auth0.util.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,8 +45,8 @@ public class UserController {
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody SecuritySettingRequest request
     ) {
-        UUID userId = UUID.fromString(userDetails.getUserId());
-        securitySettingService.requestSecuritySettingUpdate(userId, request.settingName());
+        UUID userId = SecurityUtils.getUserIdAsUuid(userDetails);
+        securitySettingService.requestSecuritySettingUpdate(userId, request.settingType());
         
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "OTP sent successfully to your registered email", null)
@@ -61,8 +62,8 @@ public class UserController {
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody VerifySecuritySettingRequest request
     ) {
-        UUID userId = UUID.fromString(userDetails.getUserId());
-        securitySettingService.verifySecuritySettingUpdate(userId, request.settingName(), request.targetValue(), request.otpCode());
+        UUID userId = SecurityUtils.getUserIdAsUuid(userDetails);
+        securitySettingService.verifySecuritySettingUpdate(userId, request.settingType(), request.targetValue(), request.otpCode());
         
         return ResponseEntity.ok(
                 new BaseResponse<>(HttpStatus.OK.value(), "Security setting updated successfully", null)
