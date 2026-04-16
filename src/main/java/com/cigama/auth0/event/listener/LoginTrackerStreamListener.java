@@ -11,6 +11,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.stream.StreamListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.time.Duration;
 
@@ -36,9 +38,10 @@ public class LoginTrackerStreamListener
 
     private static final String FAILED_ATTEMPTS_PREFIX = "auth:failed-attempts:";
 
-    public LoginTrackerStreamListener(RedisTemplate<String, Object> redisTemplate,
-                                      SecurityEventPublisher securityEventPublisher,
-                                      ObjectMapper objectMapper) {
+    public LoginTrackerStreamListener(
+            @Lazy @Qualifier("streamRedisTemplate") RedisTemplate<String, Object> redisTemplate,
+            SecurityEventPublisher securityEventPublisher,
+            ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.securityEventPublisher = securityEventPublisher;
         this.objectMapper = objectMapper;
@@ -63,7 +66,7 @@ public class LoginTrackerStreamListener
     private void handleFailedAttempt(LoginTrackerEvent event) {
         String key = FAILED_ATTEMPTS_PREFIX + event.email();
         Long attempts = redisTemplate.opsForValue().increment(key);
-        
+
         if (attempts != null && attempts == 1) {
             redisTemplate.expire(key, Duration.ofMinutes(lockoutDurationMinutes));
         }

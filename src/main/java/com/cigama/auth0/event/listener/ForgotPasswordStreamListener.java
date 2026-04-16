@@ -9,6 +9,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.stream.StreamListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * Listener for forgot-password events from the Redis Stream.
@@ -28,8 +30,8 @@ public class ForgotPasswordStreamListener
     private final ObjectMapper objectMapper;
 
     public ForgotPasswordStreamListener(EmailService emailService,
-                                        RedisTemplate<String, Object> streamRedisTemplate,
-                                        ObjectMapper objectMapper) {
+            @Lazy @Qualifier("streamRedisTemplate") RedisTemplate<String, Object> streamRedisTemplate,
+            ObjectMapper objectMapper) {
         this.emailService = emailService;
         this.streamRedisTemplate = streamRedisTemplate;
         this.objectMapper = objectMapper;
@@ -49,7 +51,8 @@ public class ForgotPasswordStreamListener
             try {
                 emailService.sendPasswordResetEmail(event.email(), event.otpCode());
             } catch (Exception e) {
-                log.error("Failed to send password reset email to {}: {}. Reverting Redis lock.", event.email(), e.getMessage());
+                log.error("Failed to send password reset email to {}: {}. Reverting Redis lock.", event.email(),
+                        e.getMessage());
                 streamRedisTemplate.delete(event.lockKey());
             }
         } catch (Exception e) {
